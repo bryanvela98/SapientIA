@@ -26,7 +26,7 @@ After you finish a meaningful chunk of work:
 - Append a new entry to `.claude/memory/progress.md`
 - Update `.claude/memory/next-steps.md`
 - If you made an architectural choice, log it in `.claude/memory/decisions.md`
-- End the session by writing `.claude/memory/sessions/YYYY-MM-DD-<topic>.md`
+- End the session by writing `.claude/memory/sessions/YYYY-MM-DD-<implementation-title>.md`. **Use an implementation title, not a day number.** Good: `2026-04-23-fastapi-skeleton.md`, `2026-04-23-sse-streaming.md`, `2026-04-24-voice-io.md`. Bad: `day2.md`, `day3.md`. Multiple session files per calendar day are fine and expected — one per commit when the commits cover distinct pieces of work.
 
 ## Accessibility priority order (MVP → stretch)
 1. Visual impairment / blindness
