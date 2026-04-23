@@ -51,3 +51,27 @@ If a turn contains only `mark_concept_earned` (and no teaching tool), `stream_tu
 ## ADR-014 — Non-streaming API calls under the hood for Day 2
 Date: 2026-04-23
 `stream_turn` emits SSE events but calls `messages.create` without `stream=True` under the hood — tool-use assembly stays simple and robust across SDK versions. Day 3 can upgrade to token-level streaming with `messages.stream` and partial-block accumulation once a React UI can actually benefit from progressive rendering.
+
+## ADR-015 — GET /session/{id}/turns for hydration, display-shaped not API-shaped
+Date: 2026-04-24
+Page refresh in the React UI needs to rebuild the transcript. Shipped a dedicated endpoint that returns `TurnOut[]` — `{turn_number, role, display_text, tool_used, created_at (ISO)}` — instead of leaking the API-shaped `content` blocks to the browser. The browser doesn't need the raw blocks (server rebuilds history from DB on every turn), and the display shape is leaner, less coupled to model internals, and easier to redact later if needed.
+
+## ADR-016 — Hand-rolled SSE parser on the client
+Date: 2026-04-24
+`EventSource` is GET-only; our turn endpoint is POST-with-body. Considered `@microsoft/fetch-event-source` and a small async generator over `fetch` + `ReadableStream`. Chose the latter: ~40 lines, zero dependency, one-shot semantics (no reconnect, which we don't want on a completed turn). Event-boundary matches `\r\n\r\n` / `\n\n` / `\r\r` per spec — our first browser run silently swallowed every event because we only matched `\n\n` and sse-starlette emits `\r\n\r\n`.
+
+## ADR-017 — Zustand for cross-route UI state
+Date: 2026-04-24
+Need cross-route state (learner, profile, session, live turn, debug decisions). Redux is overkill, `Context + useReducer` is more boilerplate than Zustand, TanStack Query doesn't fit (we have a streaming mutation, not a cacheable query). Zustand's `create` gives a single store with minimal ceremony; not load-bearing, trivial to migrate later. Store setters are stable references so selectors don't thrash effects.
+
+## ADR-018 — Event-level streaming in Day 3; token streaming in Day 4
+Date: 2026-04-24
+`stream_turn` currently emits at `tool_decision` granularity (inherited from ADR-014). In the UI that produces "announcement bursts" — the whole tutor question appears and is announced in one go — rather than progressive reveal. Acceptable as a Day 3 baseline because `aria-live="polite" aria-atomic="false"` renders both cleanly. Day 4 upgrades to `messages.stream` with partial-block accumulation for token-level streaming, at which point the `applyDecision` reducer needs to append rather than replace on deltas.
+
+## ADR-019 — AccessibilityProfile is edited, not just set once
+Date: 2026-04-24
+Users will toggle settings mid-session (turn on plain-language when a topic feels too dense, switch to ADHD-focus when scaffolding feels busy, etc.). `/onboarding` is reachable at any time from the chat header. `PATCH /learner/{id}/profile` has overwrite semantics — the whole profile is sent; partial-merge was considered and rejected as fiddly for a small profile where the UI always has the full state anyway. Driven client-side by shadcn RadioGroup per dimension + a live preview card that mirrors backend `to_prompt_guidance` so users see *what* changes before committing.
+
+## ADR-020 — No auto-focus on form mount
+Date: 2026-04-24
+Removed the focus-on-first-radio effect from `/onboarding`. Caught during the VoiceOver sanity pass: auto-focus landed screen-reader users mid-form without hearing the h1 ("Tell me how you learn best") or the "accessibility is not a skin" description — exactly the preamble that justifies the form. Sighted keyboard users pay one extra Tab to reach the first control; screen-reader users get the context they need to understand what they're filling out. Rule going forward: don't steal focus away from document top on route mount unless there's a specific reason tied to keyboard-driven workflows (e.g., a modal opening).
