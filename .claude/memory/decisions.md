@@ -83,3 +83,25 @@ The Day 1 scaffold included a `hearing: 'deaf' | 'hoh' | 'none'` field in `Acces
 Removed the field from `backend/app/schemas/profile.py`, `frontend/src/lib/types.ts` (+ `defaultProfile`), `frontend/src/lib/preview.ts`, and the `RadioField` in `Onboarding.tsx`. Added `ConfigDict(extra="ignore")` to `AccessibilityProfile` so existing dev-DB learner rows with `{"hearing": "deaf"}` JSON still round-trip without raising. Added `backend/tests/test_profile.py` covering defaults, extra-ignore, round-trip, and `to_prompt_guidance` flags.
 
 The slot was reallocated to a **motor / voice-control stretch** (users who cannot use a keyboard or mouse). This is explicitly a Day 7 scope item: full-page voice navigation is a different UX problem — command grammar, state machine, barge-in — that would derail Day 4–6 if undertaken now. Day 4 still adds STT push-to-talk in the composer, which is a narrower slice of the same space but doesn't claim to be motor-accessible overall.
+
+## ADR-022 — Dual ARIA live regions (polite transcript, assertive milestones)
+Date: 2026-04-25
+Screen-reader learners need both the streaming tutor text *and* pedagogy milestones (`concept_earned`, `concept_told`) announced, but with different priorities. Originally both went through polite regions (`<ol role="log">` for the transcript, `aria-live="polite"` on `EarnedFlash`) which caused the milestone to queue *behind* the rest of the sentence — by the time "Concept earned: derivatives" landed, the user had moved on.
+
+Shipped `src/components/LiveAnnouncer.tsx` — a single sr-only `role="alert" aria-live="assertive"` node mounted once in `Chat.tsx`. A Zustand subscription watches `earned`/`told` and writes a short 8-word-ish sentence into the node when a new item arrives; the text clears after ~4s so the DOM doesn't accumulate stale announcements that AT might re-read on focus changes. `EarnedFlash` lost its `aria-live` (now `aria-hidden="true"`) — it stays visible for sighted users, SRs get the announcement via `LiveAnnouncer` without double-firing. Transcript stays `<ol role="log">` (implicit polite) for the streaming text.
+
+Same watermark-rebase pattern as the TTS earned/told hook: shrinking the array (resetSession on new topic) rebases the count so the first announcement of a new session still fires.
+
+## ADR-023 — Shift+Space for push-to-talk, not bare Space + 200ms
+Date: 2026-04-25
+The Day 4 plan offered two STT keyboard shortcuts: bare Space held for ≥200ms (with a timer gate), or a modifier like Alt+Space. Chose **Shift+Space** (same modifier family as the plan's alternative). Reason: bare Space-hold requires either delaying every typed space via `preventDefault`-then-maybe-insert (noticeable typing latency in prose) or retroactively deleting the already-inserted space when the 200ms fires (race-prone and cursor-position-sensitive with controlled textarea inputs). Shift+Space has no typing conflict, its `preventDefault` keeps the space out of the value cleanly, and the walkie-talkie mental model is preserved.
+
+Global `keydown`/`keyup` listeners with an `activeElement === composerRef.current` guard — rather than composer-scoped — so out-of-order release (user lifts Shift before Space or vice versa) doesn't leave the mic hot. Click-toggle on the MicButton remains the primary interaction; the keyboard shortcut is for power users. Firefox (no `SpeechRecognition`) hides the button and the shortcut is a no-op.
+
+## ADR-024 — Profile-default TTS, persisted only on explicit toggle
+Date: 2026-04-25
+`useTtsEnabled(profile)` defaults to `true` for `visual=low-vision` and `false` otherwise (screen-reader users already have SR audio; auto-playing `SpeechSynthesis` on top causes clash, so they opt in). First impl eagerly wrote the initial value to localStorage on mount, which pinned first-time users to whatever the profile default was at boot and prevented later profile edits from flipping the toggle.
+
+Fixed pattern: only persist on explicit calls to the setter. On mount, seed state from stored value if present, else from `defaultTtsEnabled(profile)`. Detect profile changes during render (React's "adjust state during render" pattern, not useEffect) and re-apply the profile default if the user has never expressed a preference. Storage key bumped to `sapientia.ui.ttsEnabled.v2` to discard the buggy values written by the v1 implementation.
+
+Same principle extends to future a11y toggles: profile-driven default + explicit-only persistence so stored user choices outrank profile defaults, but the default path stays live for fresh setups.

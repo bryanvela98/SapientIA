@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { AudioArmBanner } from '@/components/AudioArmBanner';
 import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
 import { ListeningBanner } from '@/components/ListeningBanner';
+import { LiveAnnouncer } from '@/components/LiveAnnouncer';
 import { MicButton } from '@/components/MicButton';
 import { SkipLink } from '@/components/SkipLink';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -190,8 +191,12 @@ function EarnedFlash() {
   const earned = useApp((s) => s.earned);
   const told = useApp((s) => s.told);
   if (earned.length === 0 && told.length === 0) return null;
+  // Visual-only. Screen-reader announcements for earned/told go through
+  // `LiveAnnouncer` (assertive) so the milestone jumps the queue over the
+  // polite transcript stream; firing a second polite region here would
+  // cause double-announcement on most SRs.
   return (
-    <div className="flex flex-wrap gap-1 pt-1" aria-live="polite">
+    <div className="flex flex-wrap gap-1 pt-1" aria-hidden="true">
       {earned.map((e, i) => (
         <Badge key={`e-${i}`} variant="default" className="text-[10px]">
           ✓ earned: {e.concept}
@@ -384,6 +389,10 @@ function ChatSession({
   );
 
   function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Typing is a signal the user doesn't want to compete with the synth
+    // voice; cancel any in-flight tutor utterance. Cheap, idempotent, and
+    // doesn't touch the system screen-reader.
+    cancelTts();
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       void onSend(message);
@@ -404,10 +413,13 @@ function ChatSession({
         <CardContent className="space-y-4">
           <section
             aria-label="Lesson transcript"
-            role="log"
             className="max-h-[60vh] overflow-y-auto border rounded-md p-3 bg-background"
           >
-            <ul className="space-y-3">
+            {/* `role="log"` exposes the append-only chronological nature of
+                the transcript to NVDA / VO review modes. Implies polite
+                live-region behavior; the per-bubble role="status" handles
+                the streaming-delta announcement granularity. */}
+            <ol role="log" className="space-y-3">
               {turns.map((t) =>
                 t.role === 'user' ? (
                   <UserBubble key={`u-${t.turn_number}`} text={t.display_text} />
@@ -421,7 +433,7 @@ function ChatSession({
               )}
               {pendingUser && <UserBubble key="pending-user" text={pendingUser} />}
               <LiveAssistantBubble />
-            </ul>
+            </ol>
             <div ref={transcriptEndRef} />
           </section>
 
@@ -567,6 +579,7 @@ export default function Chat() {
           )}
         </div>
       </main>
+      <LiveAnnouncer />
     </>
   );
 }
