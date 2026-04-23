@@ -107,18 +107,24 @@ export async function* streamTurn(
   const decoder = new TextDecoder();
   let buffer = '';
 
+  // SSE event boundary is a blank line, which the spec allows as \r\n\r\n,
+  // \n\n, or \r\r. sse-starlette uses \r\n\r\n; match any of the three so
+  // the parser works against any SSE-compliant server.
+  const EVENT_BOUNDARY = /\r\n\r\n|\n\n|\r\r/;
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    let sepIdx: number;
-    while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
-      const rawEvent = buffer.slice(0, sepIdx);
-      buffer = buffer.slice(sepIdx + 2);
+    let match: RegExpExecArray | null;
+    while ((match = EVENT_BOUNDARY.exec(buffer)) !== null) {
+      const rawEvent = buffer.slice(0, match.index);
+      buffer = buffer.slice(match.index + match[0].length);
 
       const dataLines: string[] = [];
-      for (const line of rawEvent.split('\n')) {
+      // Lines inside an event are separated by \r\n, \n, or \r per spec.
+      for (const line of rawEvent.split(/\r\n|\n|\r/)) {
         if (line.startsWith('data:')) {
           dataLines.push(line.slice(5).trimStart());
         }
