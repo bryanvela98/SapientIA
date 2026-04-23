@@ -11,7 +11,7 @@ from app.models.learner import Learner
 from app.models.session import Session
 from app.models.turn import Turn
 from app.schemas.profile import AccessibilityProfile
-from app.schemas.session import SessionCreate, SessionOut, SessionState
+from app.schemas.session import SessionCreate, SessionOut, SessionState, TurnOut
 from app.tutor.async_loop import extract_primary, stream_turn
 from app.tutor.history import build_user_message, rebuild_history
 
@@ -36,6 +36,23 @@ async def create_session(
     await db.commit()
     await db.refresh(session)
     return SessionOut(id=session.id, learner_id=session.learner_id, topic=session.topic)
+
+
+@router.get("/{session_id}/turns", response_model=list[TurnOut])
+async def get_turns(session_id: str, db: AsyncSession = Depends(get_db)) -> list[TurnOut]:
+    session = await db.get(Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    return [
+        TurnOut(
+            turn_number=t.turn_number,
+            role=t.role,
+            display_text=t.display_text or "",
+            tool_used=t.tool_used,
+            created_at=t.created_at.isoformat(),
+        )
+        for t in session.turns
+    ]
 
 
 @router.get("/{session_id}/state", response_model=SessionState)

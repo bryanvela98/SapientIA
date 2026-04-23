@@ -18,3 +18,11 @@ class SessionState(BaseModel):
     earned: list[dict]
     told: list[dict]
     ratio: float
+
+
+class TurnOut(BaseModel):
+    turn_number: int
+    role: str  # "user" | "assistant"
+    display_text: str
+    tool_used: str | None
+    created_at: str

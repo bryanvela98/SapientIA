@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Integer, JSON, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
@@ -17,4 +17,4 @@ class Turn(Base):
     content: Mapped[list] = mapped_column(JSON)  # exact API message content blocks
     display_text: Mapped[str | None] = mapped_column(String, nullable=True)
     tool_used: Mapped[str | None] = mapped_column(String, nullable=True)  # primary teaching tool
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

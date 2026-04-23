@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Integer, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
@@ -10,7 +10,7 @@ class EarnedConcept(Base):
     session_id: Mapped[str] = mapped_column(String, ForeignKey("sessions.id"), index=True)
     concept: Mapped[str] = mapped_column(String)
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ToldConcept(Base):
@@ -19,4 +19,4 @@ class ToldConcept(Base):
     session_id: Mapped[str] = mapped_column(String, ForeignKey("sessions.id"), index=True)
     concept: Mapped[str] = mapped_column(String)
     justification: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
