@@ -1,2 +1,29 @@
 /plan
 
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Env
+.env
+.env.local
+
+# Node
+node_modules/
+dist/
+.next/
+
+# DB
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Claude Code local state (keep memory, ignore runtime)
+.claude/local/
