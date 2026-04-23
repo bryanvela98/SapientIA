@@ -1,12 +1,25 @@
+import json
+
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
 from app.db import get_db
+from app.models.concept import EarnedConcept, ToldConcept
 from app.models.learner import Learner
 from app.models.session import Session
+from app.models.turn import Turn
+from app.schemas.profile import AccessibilityProfile
 from app.schemas.session import SessionCreate, SessionOut, SessionState
+from app.tutor.async_loop import extract_primary, stream_turn
+from app.tutor.history import build_user_message, rebuild_history
 
 router = APIRouter()
+
+
+class TurnRequest(BaseModel):
+    message: str
 
 
 @router.post("", response_model=SessionOut)
@@ -42,3 +55,68 @@ async def get_state(session_id: str, db: AsyncSession = Depends(get_db)) -> Sess
         told=told,
         ratio=ratio,
     )
+
+
+@router.post("/{session_id}/turn")
+async def run_turn(session_id: str, body: TurnRequest, db: AsyncSession = Depends(get_db)):
+    session = await db.get(Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    learner = await db.get(Learner, session.learner_id)
+    if learner is None:
+        raise HTTPException(status_code=404, detail="learner not found")
+    profile = AccessibilityProfile(**(learner.accessibility_profile or {}))
+
+    turns = list(session.turns)  # ordered by turn_number via relationship
+    prior_assistant = next((t for t in reversed(turns) if t.role == "assistant"), None)
+    next_number = (turns[-1].turn_number + 1) if turns else 1
+
+    user_msg = build_user_message(body.message, prior_assistant)
+
+    user_turn = Turn(
+        session_id=session_id,
+        turn_number=next_number,
+        role="user",
+        content=user_msg["content"],
+        display_text=body.message,
+    )
+    db.add(user_turn)
+    await db.commit()
+
+    history = rebuild_history(turns) + [user_msg]
+    topic = session.topic
+
+    async def event_gen():
+        final_assistant = None
+        async for ev in stream_turn(topic, profile, history, next_number):
+            if ev["type"] == "concept_earned":
+                db.add(EarnedConcept(
+                    session_id=session_id,
+                    concept=ev["concept"],
+                    evidence=ev.get("evidence", ""),
+                ))
+                await db.commit()
+            elif ev["type"] == "concept_told":
+                db.add(ToldConcept(
+                    session_id=session_id,
+                    concept=ev["concept"],
+                    justification=ev.get("justification", ""),
+                ))
+                await db.commit()
+            elif ev["type"] == "turn_end":
+                final_assistant = ev.get("assistant_content")
+            yield {"event": ev["type"], "data": json.dumps(ev)}
+
+        if final_assistant is not None:
+            tool_name, display_text = extract_primary(final_assistant)
+            db.add(Turn(
+                session_id=session_id,
+                turn_number=next_number,
+                role="assistant",
+                content=final_assistant,
+                display_text=display_text,
+                tool_used=tool_name,
+            ))
+            await db.commit()
+
+    return EventSourceResponse(event_gen())
