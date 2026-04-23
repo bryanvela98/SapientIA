@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
+import { useDebugOpen } from '@/lib/useDebugOpen';
 import {
   createSession,
   getSessionState,
@@ -15,7 +17,7 @@ import {
 } from '@/lib/api';
 import { profileSummary } from '@/lib/preview';
 import { useApp } from '@/lib/store';
-import type { SessionState, TurnOut } from '@/lib/types';
+import type { SessionState } from '@/lib/types';
 
 const PRESET_TOPICS = [
   'Photosynthesis',
@@ -25,18 +27,18 @@ const PRESET_TOPICS = [
 
 function TopicPicker() {
   const navigate = useNavigate();
-  const setSession = useApp((s) => s.setSession);
   const [topic, setTopic] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // We don't seed the store here — ChatSession's hydration effect owns
+  // sessionId/topic/turns state so there's a single source of truth.
   async function start(chosen: string) {
     if (!chosen.trim() || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
       const session = await createSession(chosen.trim());
-      setSession(session.id, session.topic);
       navigate(`/chat/${session.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown error');
@@ -100,11 +102,11 @@ function TopicPicker() {
   );
 }
 
-function ConceptBadges({ turns }: { turns: TurnOut[] }) {
+function ConceptBadges({ count }: { count: number }) {
   // One light indicator in the header; the full list is the transcript itself.
   return (
     <Badge variant="secondary" className="font-normal">
-      {turns.length} turn{turns.length === 1 ? '' : 's'}
+      {count} turn{count === 1 ? '' : 's'}
     </Badge>
   );
 }
@@ -193,9 +195,8 @@ function EarnedFlash() {
   );
 }
 
-function ChatSession({ sessionId }: { sessionId: string }) {
+function ChatSession({ sessionId, debugOpen }: { sessionId: string; debugOpen: boolean }) {
   const turns = useApp((s) => s.turns);
-  const setSession = useApp((s) => s.setSession);
   const setTurns = useApp((s) => s.setTurns);
   const startLiveTurn = useApp((s) => s.startLiveTurn);
   const applyDecision = useApp((s) => s.applyDecision);
@@ -203,7 +204,6 @@ function ChatSession({ sessionId }: { sessionId: string }) {
   const addTold = useApp((s) => s.addTold);
   const endLiveTurn = useApp((s) => s.endLiveTurn);
   const resetSession = useApp((s) => s.resetSession);
-  const storeSessionId = useApp((s) => s.sessionId);
 
   const [message, setMessage] = useState('');
   const [state, setState] = useState<SessionState | null>(null);
@@ -214,27 +214,30 @@ function ChatSession({ sessionId }: { sessionId: string }) {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Hydrate whenever the session id changes.
+  // Hydrate whenever the session id changes. We don't bail out on a matching
+  // storeSessionId because TopicPicker no longer pre-seeds the store — the
+  // hydration fetch is the only thing that establishes session state.
   useEffect(() => {
-    if (sessionId === storeSessionId) return;
-    // Clear live/decisions/earned/told for a new session.
+    let cancelled = false;
     resetSession();
-    setSession(sessionId, '');
     void (async () => {
       try {
         const [fetchedTurns, fetchedState] = await Promise.all([
           getSessionTurns(sessionId),
           getSessionState(sessionId),
         ]);
+        if (cancelled) return;
         setTurns(fetchedTurns);
         setState(fetchedState);
-        // Backfill topic into the store now that we know it.
-        setSession(sessionId, fetchedState.topic);
       } catch (err) {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : 'failed to load session');
       }
     })();
-  }, [sessionId, storeSessionId, resetSession, setSession, setTurns]);
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, resetSession, setTurns]);
 
   // Keep the transcript scrolled to the latest content as turns arrive.
   useEffect(() => {
@@ -295,7 +298,9 @@ function ChatSession({ sessionId }: { sessionId: string }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base truncate">{state?.topic ?? 'Loading…'}</CardTitle>
-          <ConceptBadges turns={turns} />
+          <ConceptBadges
+            count={turns.length === 0 ? 0 : Math.max(...turns.map((t) => t.turn_number))}
+          />
         </CardHeader>
         <CardContent className="space-y-4">
           <section
@@ -304,16 +309,18 @@ function ChatSession({ sessionId }: { sessionId: string }) {
             className="max-h-[60vh] overflow-y-auto border rounded-md p-3 bg-background"
           >
             <ul className="space-y-3">
-              {turns.map((t) => (
-                <li key={`${t.role}-${t.turn_number}`} className="list-none">
-                  {t.role === 'user' ? (
-                    <UserBubble text={t.display_text} />
-                  ) : (
-                    <AssistantBubble text={t.display_text} tool={t.tool_used} />
-                  )}
-                </li>
-              ))}
-              {pendingUser && <UserBubble text={pendingUser} />}
+              {turns.map((t) =>
+                t.role === 'user' ? (
+                  <UserBubble key={`u-${t.turn_number}`} text={t.display_text} />
+                ) : (
+                  <AssistantBubble
+                    key={`a-${t.turn_number}`}
+                    text={t.display_text}
+                    tool={t.tool_used}
+                  />
+                ),
+              )}
+              {pendingUser && <UserBubble key="pending-user" text={pendingUser} />}
               <LiveAssistantBubble />
             </ul>
             <div ref={transcriptEndRef} />
@@ -367,6 +374,8 @@ function ChatSession({ sessionId }: { sessionId: string }) {
           {state.ratio.toFixed(2)}
         </p>
       )}
+
+      <DebugPanel open={debugOpen} topic={state?.topic ?? ''} />
     </div>
   );
 }
@@ -374,13 +383,17 @@ function ChatSession({ sessionId }: { sessionId: string }) {
 export default function Chat() {
   const { sessionId } = useParams<{ sessionId?: string }>();
   const profile = useApp((s) => s.profile);
+  const [debugOpen, setDebugOpen] = useDebugOpen();
 
   return (
     <main className="min-h-screen bg-background text-foreground p-6 flex justify-center">
       <div className="w-full max-w-2xl space-y-4">
-        <header className="flex items-center justify-between gap-4">
+        <header className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold">SapientIA</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {sessionId && (
+              <DebugPanelToggle open={debugOpen} onOpenChange={setDebugOpen} />
+            )}
             <span className="text-xs text-muted-foreground hidden sm:inline">
               {profileSummary(profile)}
             </span>
@@ -395,7 +408,11 @@ export default function Chat() {
           </div>
         </header>
 
-        {sessionId ? <ChatSession sessionId={sessionId} /> : <TopicPicker />}
+        {sessionId ? (
+          <ChatSession sessionId={sessionId} debugOpen={debugOpen} />
+        ) : (
+          <TopicPicker />
+        )}
       </div>
     </main>
   );
