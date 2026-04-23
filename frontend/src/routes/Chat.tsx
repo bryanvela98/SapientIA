@@ -9,13 +9,16 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AudioArmBanner } from '@/components/AudioArmBanner';
 import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
+import { ListeningBanner } from '@/components/ListeningBanner';
+import { MicButton } from '@/components/MicButton';
 import { SkipLink } from '@/components/SkipLink';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { TtsToggle } from '@/components/TtsToggle';
+import { useStt } from '@/hooks/useStt';
 import { useTtsForLiveTurn } from '@/hooks/useTtsForLiveTurn';
 import { useTtsKeyboard } from '@/hooks/useTtsKeyboard';
 import { useDebugOpen } from '@/lib/useDebugOpen';
-import { isTtsSupported } from '@/lib/tts';
+import { cancel as cancelTts, isTtsSupported } from '@/lib/tts';
 import { useAudioArmed, useTtsEnabled } from '@/lib/useTts';
 import {
   createSession,
@@ -235,6 +238,67 @@ function ChatSession({
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
+  // STT push-to-talk. On final result, append the transcript to the current
+  // composer value with a single leading space if there's already content.
+  // Interim results render below the textarea for live preview (not merged
+  // into the textarea value so the user can still edit their typed prefix).
+  // When listening starts, cancel any in-flight TTS so the mic doesn't pick
+  // up the synth voice as input.
+  const stt = useStt({
+    onFinal: (transcript) => {
+      const trimmed = transcript.trim();
+      if (!trimmed) return;
+      setMessage((prev) => (prev && !prev.endsWith(' ') ? `${prev} ${trimmed}` : `${prev}${trimmed}`));
+    },
+  });
+
+  const startDictation = useCallback(() => {
+    if (!stt.supported || stt.listening) return;
+    cancelTts();
+    stt.start();
+  }, [stt]);
+
+  const stopDictation = useCallback(() => {
+    if (!stt.listening) return;
+    stt.stop();
+  }, [stt]);
+
+  const toggleDictation = useCallback(() => {
+    if (stt.listening) stopDictation();
+    else startDictation();
+  }, [stt.listening, startDictation, stopDictation]);
+
+  // Global Shift+Space hold while composer focused. We use Shift+Space rather
+  // than bare Space-hold because intercepting every space key for a 200ms
+  // gate either delays normal typing or requires race-prone retroactive
+  // deletion of the typed character. Shift+Space has no keyboard conflict and
+  // the preventDefault keeps the browser from inserting a space on press.
+  useEffect(() => {
+    if (!stt.supported) return;
+    let armed = false;
+    function onDown(e: KeyboardEvent) {
+      if (e.key !== ' ' || !e.shiftKey || e.repeat) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.activeElement !== composerRef.current) return;
+      e.preventDefault();
+      armed = true;
+      startDictation();
+    }
+    function onUp(e: KeyboardEvent) {
+      if (!armed) return;
+      if (e.key === ' ' || e.key === 'Shift') {
+        armed = false;
+        stopDictation();
+      }
+    }
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, [stt.supported, startDictation, stopDictation]);
+
   // Hydrate whenever the session id changes. We don't bail out on a matching
   // storeSessionId because TopicPicker no longer pre-seeds the store — the
   // hydration fetch is the only thing that establishes session state.
@@ -363,6 +427,19 @@ function ChatSession({
 
           <EarnedFlash />
 
+          {stt.listening && <ListeningBanner interim={stt.interim} />}
+
+          {stt.error && (
+            <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/60 bg-destructive/5 p-3">
+              <p role="alert" className="text-sm text-destructive">
+                {stt.error}
+              </p>
+              <Button type="button" size="sm" variant="outline" onClick={stt.clearError}>
+                Dismiss
+              </Button>
+            </div>
+          )}
+
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}
@@ -389,17 +466,30 @@ function ChatSession({
               rows={3}
               aria-describedby="composer-help"
             />
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <p id="composer-help" className="text-xs text-muted-foreground">
-                {streaming ? 'Tutor is replying…' : 'Cmd/Ctrl + Enter to send'}
+                {streaming
+                  ? 'Tutor is replying…'
+                  : stt.supported
+                  ? 'Cmd/Ctrl + Enter to send · hold Shift+Space to dictate'
+                  : 'Cmd/Ctrl + Enter to send'}
               </p>
-              <Button
-                type="submit"
-                disabled={streaming || !message.trim()}
-                aria-busy={streaming}
-              >
-                {streaming ? 'Sending…' : 'Send'}
-              </Button>
+              <div className="flex items-center gap-2">
+                {stt.supported && (
+                  <MicButton
+                    listening={stt.listening}
+                    disabled={streaming}
+                    onToggle={toggleDictation}
+                  />
+                )}
+                <Button
+                  type="submit"
+                  disabled={streaming || !message.trim()}
+                  aria-busy={streaming}
+                >
+                  {streaming ? 'Sending…' : 'Send'}
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>
