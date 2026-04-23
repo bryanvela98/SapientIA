@@ -1,17 +1,28 @@
 """Async tutor loop — yields SSE-ready events per turn.
 
-Design: we stream the SSE events to the client, but use non-streaming API calls
-under the hood (ADR-014) so tool-use assembly stays simple. Day 3 can upgrade to
-token-level streaming when the UI actually benefits.
+Design: uses `messages.stream` under the hood for token-level deltas, then
+synthesizes `text_delta` events from `input_json_delta` chunks. Our tutor never
+emits plain text blocks — tool_choice={"type":"any"} forces every message into
+a tool_use — so the primary teaching prose lives inside
+`tool_use.input.question | .hint | .answer`. We track those three fields as
+the partial JSON grows and emit incremental characters.
 
 Invariants:
-- On a bookkeeping-only response, chain through up to 2x to force a teaching move (ADR-013).
-- `turn_start` → 0+ `tool_decision` / `concept_earned` / `concept_told` → `turn_end`.
-- `turn_end.assistant_content` carries the API-shaped content blocks to persist.
-- `deliver_answer` on turn 1 is flagged as a violation but NOT blocked (we want
-  to see it in the log, not crash the turn).
+- On a bookkeeping-only response, chain through up to 2x (ADR-013).
+- Event order (happy path):
+    turn_start → (text_delta)* → tool_decision → (concept_earned|concept_told)? → turn_end
+  `tool_decision` fires at content_block_stop with the complete input, so the
+  Day 3 Chat UI keeps working without change while Commit 3 switches to
+  progressive text_delta consumption.
+- `turn_end.assistant_content` carries the API-shaped content blocks so the
+  Turn row is persisted in the shape the next turn's history replay expects
+  (ADR-012).
+- `deliver_answer` on turn 1 surfaces as a violation, not a crash.
 """
+import json
+import re
 from typing import AsyncIterator
+
 from anthropic import AsyncAnthropic
 
 from app.config import settings
@@ -30,26 +41,147 @@ def _client() -> AsyncAnthropic:
 
 
 BOOKKEEPING = {"mark_concept_earned"}
-TEACHING_TOOLS = {"diagnose", "ask_socratic_question", "give_hint", "check_understanding", "deliver_answer"}
+TEACHING_TOOLS = {
+    "diagnose",
+    "ask_socratic_question",
+    "give_hint",
+    "check_understanding",
+    "deliver_answer",
+}
+PRIMARY_TEXT_FIELDS = ("question", "hint", "answer")
 
 
-async def _single_call(messages: list[dict], system: str):
-    return await _client().messages.create(
+def _extract_primary_text(partial_json: str) -> str:
+    """Best-effort extraction of the current value of question/hint/answer
+    from a possibly-unterminated JSON string. Returns '' if no matching
+    field has appeared yet. Mid-escape chunks fall back to the raw captured
+    substring, which is corrected on the next delta.
+    """
+    for key in PRIMARY_TEXT_FIELDS:
+        m = re.search(f'"{re.escape(key)}"\\s*:\\s*"', partial_json)
+        if not m:
+            continue
+        start = m.end()
+        i = start
+        while i < len(partial_json):
+            ch = partial_json[i]
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == '"':
+                break
+            i += 1
+        raw = partial_json[start:i]
+        try:
+            return json.loads('"' + raw + '"')
+        except json.JSONDecodeError:
+            return raw
+    return ""
+
+
+async def _stream_one_attempt(
+    history: list[dict],
+    system: str,
+    turn_number: int,
+    violations: list[str],
+    state: dict,
+) -> AsyncIterator[dict]:
+    """Stream one messages.stream call. Yields SSE-ready events as they arrive.
+    Populates `state["blocks"]` (list of API-shaped tool_use dicts) and
+    `state["teaching"]` (bool) on completion."""
+    per_block: dict[int, dict] = {}
+    final_blocks: list[dict] = []
+
+    async with _client().messages.stream(
         model=settings.tutor_model,
         max_tokens=1024,
         system=system,
         tools=TOOLS,
         tool_choice={"type": "any"},
-        messages=messages,
+        messages=history,
+    ) as stream:
+        async for event in stream:
+            etype = getattr(event, "type", None)
+
+            if etype == "content_block_start":
+                block = event.content_block
+                if getattr(block, "type", None) == "tool_use":
+                    per_block[event.index] = {
+                        "name": block.name,
+                        "id": block.id,
+                        "partial_json": "",
+                        "last_text_len": 0,
+                    }
+
+            elif etype == "content_block_delta":
+                delta = event.delta
+                if getattr(delta, "type", None) != "input_json_delta":
+                    continue
+                acc = per_block.get(event.index)
+                if acc is None:
+                    continue
+                acc["partial_json"] += delta.partial_json
+                current = _extract_primary_text(acc["partial_json"])
+                if len(current) > acc["last_text_len"]:
+                    new_chars = current[acc["last_text_len"]:]
+                    acc["last_text_len"] = len(current)
+                    yield {
+                        "type": "text_delta",
+                        "text": new_chars,
+                        "block_index": event.index,
+                    }
+
+            elif etype == "content_block_stop":
+                acc = per_block.get(event.index)
+                if acc is None:
+                    continue
+                try:
+                    input_obj = (
+                        json.loads(acc["partial_json"]) if acc["partial_json"] else {}
+                    )
+                except json.JSONDecodeError:
+                    input_obj = {}
+
+                final_blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": acc["id"],
+                        "name": acc["name"],
+                        "input": input_obj,
+                    }
+                )
+
+                # Emit tool_decision with the fully-known input. Day 3 frontend
+                # depends on this for live.text; Commit 3 will also consume
+                # text_delta events for progressive reveal.
+                yield {
+                    "type": "tool_decision",
+                    "name": acc["name"],
+                    "id": acc["id"],
+                    "input": input_obj,
+                    "block_index": event.index,
+                }
+
+                if acc["name"] == "mark_concept_earned":
+                    yield {
+                        "type": "concept_earned",
+                        "concept": input_obj.get("concept", ""),
+                        "evidence": input_obj.get("evidence", ""),
+                    }
+                elif acc["name"] == "deliver_answer":
+                    yield {
+                        "type": "concept_told",
+                        "concept": input_obj.get("concept", ""),
+                        "justification": input_obj.get("justification", ""),
+                        "answer": input_obj.get("answer", ""),
+                    }
+                    if turn_number == 1:
+                        violations.append("deliver_answer on turn 1")
+
+    state["blocks"] = final_blocks
+    state["teaching"] = any(
+        b["name"] in TEACHING_TOOLS for b in final_blocks if b["type"] == "tool_use"
     )
-
-
-def _block_to_dict(b) -> dict:
-    if b.type == "text":
-        return {"type": "text", "text": b.text}
-    if b.type == "tool_use":
-        return {"type": "tool_use", "id": b.id, "name": b.name, "input": b.input}
-    raise ValueError(f"unexpected block type: {b.type}")
 
 
 async def stream_turn(
@@ -60,65 +192,62 @@ async def stream_turn(
 ) -> AsyncIterator[dict]:
     """Yield SSE-ready event dicts for one tutor turn.
 
-    `history` must already include the latest user turn (with any needed tool_result
-    pairing — call `build_user_message` first and append).
+    `history` must already include the latest user turn (with any needed
+    tool_result pairing — call `build_user_message` first and append).
     """
     yield {"type": "turn_start", "turn_number": turn_number}
     system = build_system_prompt(topic, profile)
     violations: list[str] = []
-    final_assistant_content = None
+    current_history = history
+    final_content: list[dict] | None = None
 
     for _ in range(2):  # at most one chain-through
-        resp = await _single_call(history, system)
-        content_blocks = [_block_to_dict(b) for b in resp.content]
-        tool_uses = [b for b in content_blocks if b["type"] == "tool_use"]
+        state: dict = {"blocks": None, "teaching": False}
+        async for ev in _stream_one_attempt(
+            current_history, system, turn_number, violations, state
+        ):
+            yield ev
 
-        for tu in tool_uses:
-            yield {"type": "tool_decision", "name": tu["name"], "input": tu["input"], "id": tu["id"]}
-            if tu["name"] == "mark_concept_earned":
-                yield {
-                    "type": "concept_earned",
-                    "concept": tu["input"]["concept"],
-                    "evidence": tu["input"].get("evidence", ""),
-                }
-            elif tu["name"] == "deliver_answer":
-                yield {
-                    "type": "concept_told",
-                    "concept": tu["input"]["concept"],
-                    "justification": tu["input"].get("justification", ""),
-                    "answer": tu["input"].get("answer", ""),
-                }
-                if turn_number == 1:
-                    violations.append("deliver_answer on turn 1")
-
-        tool_names = {tu["name"] for tu in tool_uses}
-        if tool_names & TEACHING_TOOLS:
-            final_assistant_content = content_blocks
+        if not state["blocks"]:
+            continue
+        if state["teaching"]:
+            final_content = state["blocks"]
             break
 
-        # Bookkeeping-only — extend history with the assistant turn + a synthesized
-        # tool_result user turn, then loop once to force a teaching move.
-        history = history + [{"role": "assistant", "content": content_blocks}]
-        history = history + [{
-            "role": "user",
-            "content": [
-                {"type": "tool_result", "tool_use_id": tu["id"], "content": "ok"}
-                for tu in tool_uses
-            ],
-        }]
+        # Bookkeeping-only — extend history with the assistant turn + a
+        # synthesized tool_result user turn, then loop once to force a teaching
+        # move. The retry path must also stream (not fall back to non-stream),
+        # otherwise the chain-through silently regresses us to a non-streaming
+        # turn — see Day 4 plan's carry-forward risks.
+        current_history = current_history + [
+            {"role": "assistant", "content": state["blocks"]},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": b["id"], "content": "ok"}
+                    for b in state["blocks"]
+                    if b["type"] == "tool_use"
+                ],
+            },
+        ]
 
-    if final_assistant_content is None:
-        yield {"type": "error", "message": "model produced only bookkeeping after 2 attempts"}
+    if final_content is None:
+        yield {
+            "type": "error",
+            "message": "model produced only bookkeeping after 2 attempts",
+        }
         return
 
     yield {
         "type": "turn_end",
         "violations": violations,
-        "assistant_content": final_assistant_content,
+        "assistant_content": final_content,
     }
 
 
-def extract_primary(assistant_content: list[dict]) -> tuple[str | None, str | None]:
+def extract_primary(
+    assistant_content: list[dict],
+) -> tuple[str | None, str | None]:
     """Return (tool_name, display_text) for the primary teaching tool call in
     an assistant content array. Bookkeeping-only content returns (None, None).
     """

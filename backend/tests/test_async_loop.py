@@ -56,6 +56,50 @@ async def test_multiturn_rebuild_keeps_api_happy():
 
 
 @pytest.mark.integration
+async def test_text_delta_events_assemble_primary_text():
+    """Token-level streaming: `text_delta` events should fire multiple times
+    per teaching tool block, and their concatenation (filtered by the primary
+    block_index) should reconstruct the tool's question/hint/answer field.
+    """
+    history = [
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "What is photosynthesis?"}],
+        }
+    ]
+    events = await _collect(
+        stream_turn("Photosynthesis", AccessibilityProfile(), history, 1)
+    )
+
+    deltas = [ev for ev in events if ev["type"] == "text_delta"]
+    assert len(deltas) >= 2, (
+        f"expected multi-chunk streaming; got only {len(deltas)} text_delta events"
+    )
+
+    primary_decision = next(
+        (
+            ev
+            for ev in events
+            if ev["type"] == "tool_decision" and ev["name"] in TEACHING_TOOLS
+        ),
+        None,
+    )
+    assert primary_decision is not None, "no teaching tool_decision emitted"
+
+    primary_idx = primary_decision["block_index"]
+    primary_deltas = [d for d in deltas if d["block_index"] == primary_idx]
+    assembled = "".join(d["text"] for d in primary_deltas)
+
+    inp = primary_decision["input"]
+    expected = inp.get("question") or inp.get("hint") or inp.get("answer", "")
+    assert assembled == expected, (
+        f"assembled text_delta != tool_decision.input primary field\n"
+        f"  assembled={assembled!r}\n"
+        f"  expected={expected!r}"
+    )
+
+
+@pytest.mark.integration
 async def test_chain_through_recovers_from_bookkeeping_only():
     """Inject a history where the previous assistant turn fired ONLY mark_concept_earned,
     and this turn's initial model call is also likely to want to reinforce rather than
