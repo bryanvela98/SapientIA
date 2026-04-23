@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SkipLink } from '@/components/SkipLink';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
@@ -112,43 +113,50 @@ export default function Onboarding() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground p-6 flex justify-center">
-      <div className="w-full max-w-2xl space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold">Tell me how you learn best</h1>
-          <p className="text-sm text-muted-foreground">
-            These settings change how the tutor talks to you — not just colors. Live preview on the
-            right shows how a tutor opener adapts to your current choices. You can change these any
-            time from the chat header.
-          </p>
-        </header>
+    <>
+      <SkipLink href="#first-field">Skip to form</SkipLink>
+      <main
+        id="main"
+        className="min-h-screen bg-background text-foreground p-6 flex justify-center"
+      >
+        <div className="w-full max-w-2xl space-y-6">
+          <header className="space-y-2">
+            <h1 className="text-2xl font-semibold">Tell me how you learn best</h1>
+            <p className="text-sm text-muted-foreground">
+              These settings change how the tutor talks to you — not just colors. Live preview on the
+              right shows how a tutor opener adapts to your current choices. You can change these any
+              time from the chat header.
+            </p>
+          </header>
 
-        <form onSubmit={onSubmit} className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Accessibility profile</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <RadioField
-                legend="Visual"
-                description="Screen-reader users get verbal descriptions and linear prose instead of diagrams."
-                name="visual"
-                value={draft.visual}
-                options={[
-                  { value: 'none', label: 'No accommodation', description: 'Default phrasing.' },
-                  {
-                    value: 'screen-reader',
-                    label: 'Screen reader',
-                    description: 'Verbal image descriptions; no ASCII diagrams; linear prose.',
-                  },
-                  {
-                    value: 'low-vision',
-                    label: 'Low vision',
-                    description: 'Reserved for UI adaptations in a later milestone.',
-                  },
-                ]}
-                onChange={(v) => patch('visual', v)}
-              />
+          <form onSubmit={onSubmit} className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Accessibility profile</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div id="first-field" tabIndex={-1} className="focus:outline-none">
+                  <RadioField
+                    legend="Visual"
+                    description="Screen-reader users get verbal descriptions and linear prose instead of diagrams."
+                    name="visual"
+                    value={draft.visual}
+                    options={[
+                      { value: 'none', label: 'No accommodation', description: 'Default phrasing.' },
+                      {
+                        value: 'screen-reader',
+                        label: 'Screen reader',
+                        description: 'Verbal image descriptions; no ASCII diagrams; linear prose.',
+                      },
+                      {
+                        value: 'low-vision',
+                        label: 'Low vision',
+                        description: 'Reserved for UI adaptations in a later milestone.',
+                      },
+                    ]}
+                    onChange={(v) => patch('visual', v)}
+                  />
+                </div>
 
               <RadioField
                 legend="Cognitive"
@@ -237,9 +245,10 @@ export default function Onboarding() {
                 {submitting ? 'Saving…' : 'Save and continue'}
               </Button>
             </div>
-          </div>
-        </form>
-      </div>
-    </main>
+            </div>
+          </form>
+        </div>
+      </main>
+    </>
   );
 }

@@ -52,6 +52,13 @@ export type ToolDecision = {
   name: ToolName;
   input: Record<string, unknown>;
   id: string;
+  block_index?: number;
+};
+
+export type TextDelta = {
+  type: 'text_delta';
+  text: string;
+  block_index: number;
 };
 
 export type ConceptEarned = { type: 'concept_earned'; concept: string; evidence: string };
@@ -66,6 +73,7 @@ export type TurnError = { type: 'error'; message: string };
 
 export type TurnEvent =
   | TurnStart
+  | TextDelta
   | ToolDecision
   | ConceptEarned
   | ConceptTold

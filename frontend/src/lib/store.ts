@@ -4,6 +4,7 @@ import type {
   ConceptEarned,
   ConceptTold,
   Learner,
+  TextDelta,
   ToolDecision,
   TurnOut,
 } from './types';
@@ -41,6 +42,7 @@ type UIState = {
   setSession: (id: string, topic: string) => void;
   setTurns: (t: TurnOut[]) => void;
   startLiveTurn: (n: number) => void;
+  applyTextDelta: (d: TextDelta) => void;
   applyDecision: (d: ToolDecision) => void;
   addEarned: (e: ConceptEarned) => void;
   addTold: (t: ConceptTold) => void;
@@ -81,6 +83,25 @@ export const useApp = create<UIState>((set) => ({
       live: { turn_number: n, text: '', tool_name: null, streaming: true },
     }),
 
+  // text_delta events (backend Commit 2) stream incremental chars for the
+  // primary teaching field. Append to live.text, don't replace. Block_index
+  // isn't tracked per-block on the UI side today because tool_choice forces
+  // exactly one teaching tool_use per turn; if that ever relaxes, scope the
+  // append by block_index.
+  applyTextDelta: (d) =>
+    set((s) => {
+      const live = s.live ?? {
+        turn_number: -1,
+        text: '',
+        tool_name: null,
+        streaming: true,
+      };
+      return { live: { ...live, text: live.text + d.text } };
+    }),
+
+  // tool_decision arrives at content_block_stop (backend Commit 2) with the
+  // fully-parsed input. We only use it here to record the tool name +
+  // hint_level metadata; live.text is owned by the text_delta stream above.
   applyDecision: (d) =>
     set((s) => {
       const live = s.live ?? {
@@ -90,16 +111,12 @@ export const useApp = create<UIState>((set) => ({
         streaming: true,
       };
       const isTeaching = (TEACHING_TOOLS as string[]).includes(d.name);
-      const text = isTeaching
-        ? String(d.input.question ?? d.input.hint ?? d.input.answer ?? '')
-        : live.text;
       const hintLevel =
         d.name === 'give_hint' ? Number(d.input.level ?? 0) : live.hint_level;
       return {
         decisions: [...s.decisions, d],
         live: {
           ...live,
-          text,
           tool_name: isTeaching ? d.name : live.tool_name,
           hint_level: hintLevel,
         },

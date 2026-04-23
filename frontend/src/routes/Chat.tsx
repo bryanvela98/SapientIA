@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
+import { SkipLink } from '@/components/SkipLink';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { useDebugOpen } from '@/lib/useDebugOpen';
 import {
   createSession,
@@ -199,6 +201,7 @@ function ChatSession({ sessionId, debugOpen }: { sessionId: string; debugOpen: b
   const turns = useApp((s) => s.turns);
   const setTurns = useApp((s) => s.setTurns);
   const startLiveTurn = useApp((s) => s.startLiveTurn);
+  const applyTextDelta = useApp((s) => s.applyTextDelta);
   const applyDecision = useApp((s) => s.applyDecision);
   const addEarned = useApp((s) => s.addEarned);
   const addTold = useApp((s) => s.addTold);
@@ -256,7 +259,8 @@ function ChatSession({ sessionId, debugOpen }: { sessionId: string; debugOpen: b
 
       try {
         for await (const ev of streamTurn(sessionId, outgoing)) {
-          if (ev.type === 'tool_decision') applyDecision(ev);
+          if (ev.type === 'text_delta') applyTextDelta(ev);
+          else if (ev.type === 'tool_decision') applyDecision(ev);
           else if (ev.type === 'concept_earned') addEarned(ev);
           else if (ev.type === 'concept_told') addTold(ev);
           else if (ev.type === 'error') setError(ev.message);
@@ -283,7 +287,18 @@ function ChatSession({ sessionId, debugOpen }: { sessionId: string; debugOpen: b
         composerRef.current?.focus();
       }
     },
-    [sessionId, streaming, turns, startLiveTurn, applyDecision, addEarned, addTold, endLiveTurn, setTurns],
+    [
+      sessionId,
+      streaming,
+      turns,
+      startLiveTurn,
+      applyTextDelta,
+      applyDecision,
+      addEarned,
+      addTold,
+      endLiveTurn,
+      setTurns,
+    ],
   );
 
   function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -335,11 +350,13 @@ function ChatSession({ sessionId, debugOpen }: { sessionId: string; debugOpen: b
           )}
 
           <form
+            id="composer"
+            tabIndex={-1}
             onSubmit={(e) => {
               e.preventDefault();
               void onSend(message);
             }}
-            className="space-y-2"
+            className="space-y-2 focus:outline-none"
           >
             <Label htmlFor="message">Your reply</Label>
             <Textarea
@@ -386,34 +403,45 @@ export default function Chat() {
   const [debugOpen, setDebugOpen] = useDebugOpen();
 
   return (
-    <main className="min-h-screen bg-background text-foreground p-6 flex justify-center">
-      <div className="w-full max-w-2xl space-y-4">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-2xl font-semibold">SapientIA</h1>
-          <div className="flex flex-wrap items-center gap-3">
-            {sessionId && (
-              <DebugPanelToggle open={debugOpen} onOpenChange={setDebugOpen} />
-            )}
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              {profileSummary(profile)}
-            </span>
-            {sessionId && (
-              <Button asChild variant="ghost" size="sm">
-                <Link to="/chat">New topic</Link>
+    <>
+      {sessionId ? (
+        <SkipLink href="#composer">Skip to composer</SkipLink>
+      ) : (
+        <SkipLink href="#topic-input">Skip to topic input</SkipLink>
+      )}
+      <main
+        id="main"
+        className="min-h-screen bg-background text-foreground p-6 flex justify-center"
+      >
+        <div className="w-full max-w-2xl space-y-4">
+          <header className="flex flex-wrap items-center justify-between gap-4">
+            <h1 className="text-2xl font-semibold">SapientIA</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              {sessionId && (
+                <DebugPanelToggle open={debugOpen} onOpenChange={setDebugOpen} />
+              )}
+              <ThemeToggle />
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                {profileSummary(profile)}
+              </span>
+              {sessionId && (
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/chat">New topic</Link>
+                </Button>
+              )}
+              <Button asChild variant="outline" size="sm">
+                <Link to="/onboarding">Edit profile</Link>
               </Button>
-            )}
-            <Button asChild variant="outline" size="sm">
-              <Link to="/onboarding">Edit profile</Link>
-            </Button>
-          </div>
-        </header>
+            </div>
+          </header>
 
-        {sessionId ? (
-          <ChatSession sessionId={sessionId} debugOpen={debugOpen} />
-        ) : (
-          <TopicPicker />
-        )}
-      </div>
-    </main>
+          {sessionId ? (
+            <ChatSession sessionId={sessionId} debugOpen={debugOpen} />
+          ) : (
+            <TopicPicker />
+          )}
+        </div>
+      </main>
+    </>
   );
 }
