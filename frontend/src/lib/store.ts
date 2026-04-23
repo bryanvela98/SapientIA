@@ -110,8 +110,7 @@ export const useApp = create<UIState>((set) => ({
 
   addTold: (t) => set((s) => ({ told: [...s.told, t] })),
 
-  endLiveTurn: () =>
-    set((s) => ({ live: s.live ? { ...s.live, streaming: false } : null })),
+  endLiveTurn: () => set({ live: null }),
 
   resetSession: () =>
     set({
