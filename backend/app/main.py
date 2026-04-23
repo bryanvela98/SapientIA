@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
-from app.routers import health
+from app.routers import health, learner, session
 
 
 @asynccontextmanager
@@ -23,3 +23,5 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(learner.router, prefix="/learner", tags=["learner"])
+app.include_router(session.router, prefix="/session", tags=["session"])
