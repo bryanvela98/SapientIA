@@ -92,10 +92,16 @@ export function useTtsForLiveTurn({ enabled, armed, lang }: Options) {
   }, [live, enabled, armed, lang]);
 
   // Discrete earned announcements — queued, not interrupting the turn voice.
+  // `resetSession` (new topic) clears the earned array back to []; we detect
+  // the shrink and rebase the watermark so the next `concept_earned` on the
+  // new session still fires an announcement.
   useEffect(() => {
     if (!enabled || !armed) {
       earnedCountRef.current = earned.length;
       return;
+    }
+    if (earned.length < earnedCountRef.current) {
+      earnedCountRef.current = earned.length;
     }
     if (earned.length > earnedCountRef.current) {
       for (let i = earnedCountRef.current; i < earned.length; i++) {
@@ -109,6 +115,9 @@ export function useTtsForLiveTurn({ enabled, armed, lang }: Options) {
     if (!enabled || !armed) {
       toldCountRef.current = told.length;
       return;
+    }
+    if (told.length < toldCountRef.current) {
+      toldCountRef.current = told.length;
     }
     if (told.length > toldCountRef.current) {
       for (let i = toldCountRef.current; i < told.length; i++) {

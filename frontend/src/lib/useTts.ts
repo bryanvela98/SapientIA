@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { AccessibilityProfile } from './types';
 
-const TTS_ENABLED_KEY = 'sapientia.ui.ttsEnabled';
+// v2 intentionally discards any value written by the initial implementation,
+// which eagerly persisted the profile default on mount and thereby pinned
+// existing devs to whatever was current at first load.
+const TTS_ENABLED_KEY = 'sapientia.ui.ttsEnabled.v2';
 const AUDIO_ARMED_KEY = 'sapientia.ui.audioArmed';
 
 // Profile-driven default for the toggle.
@@ -15,29 +18,48 @@ export function defaultTtsEnabled(profile: AccessibilityProfile): boolean {
   return profile.visual === 'low-vision';
 }
 
+function readStoredTts(): '1' | '0' | null {
+  try {
+    const v = localStorage.getItem(TTS_ENABLED_KEY);
+    if (v === '1' || v === '0') return v;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function useTtsEnabled(
   profile: AccessibilityProfile,
 ): [boolean, (v: boolean) => void] {
   const [enabled, setEnabled] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem(TTS_ENABLED_KEY);
-      if (stored === '1') return true;
-      if (stored === '0') return false;
-      return defaultTtsEnabled(profile);
-    } catch {
-      return defaultTtsEnabled(profile);
-    }
+    const stored = readStoredTts();
+    if (stored === '1') return true;
+    if (stored === '0') return false;
+    return defaultTtsEnabled(profile);
   });
+  // Track the last visual axis we observed so we can detect a profile change
+  // *during render* (React's recommended pattern for deriving state from
+  // props; see https://react.dev/learn/you-might-not-need-an-effect#adjusting-
+  // some-state-when-a-prop-changes). Re-applies the profile default only when
+  // the user has not expressed an explicit preference (no value in storage).
+  const [prevVisual, setPrevVisual] = useState(profile.visual);
+  if (prevVisual !== profile.visual) {
+    setPrevVisual(profile.visual);
+    if (readStoredTts() === null) {
+      setEnabled(defaultTtsEnabled(profile));
+    }
+  }
 
-  useEffect(() => {
+  const update = useCallback((v: boolean) => {
+    setEnabled(v);
     try {
-      localStorage.setItem(TTS_ENABLED_KEY, enabled ? '1' : '0');
+      localStorage.setItem(TTS_ENABLED_KEY, v ? '1' : '0');
     } catch {
       // private mode — ignore
     }
-  }, [enabled]);
+  }, []);
 
-  return [enabled, setEnabled];
+  return [enabled, update];
 }
 
 // Browsers (Safari, Chrome) silently drop speechSynthesis.speak() until the
