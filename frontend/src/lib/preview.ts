@@ -32,7 +32,6 @@ export function previewSample(p: AccessibilityProfile): string {
 export function profileSummary(p: AccessibilityProfile): string {
   const parts: string[] = [];
   if (p.visual !== 'none') parts.push(p.visual);
-  if (p.hearing !== 'none') parts.push(p.hearing);
   if (p.cognitive !== 'none') parts.push(p.cognitive);
   if (p.learning !== 'none') parts.push(p.learning);
   if (p.pacing !== 'normal') parts.push(p.pacing);

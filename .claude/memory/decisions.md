@@ -75,3 +75,11 @@ Users will toggle settings mid-session (turn on plain-language when a topic feel
 ## ADR-020 — No auto-focus on form mount
 Date: 2026-04-24
 Removed the focus-on-first-radio effect from `/onboarding`. Caught during the VoiceOver sanity pass: auto-focus landed screen-reader users mid-form without hearing the h1 ("Tell me how you learn best") or the "accessibility is not a skin" description — exactly the preamble that justifies the form. Sighted keyboard users pay one extra Tab to reach the first control; screen-reader users get the context they need to understand what they're filling out. Rule going forward: don't steal focus away from document top on route mount unless there's a specific reason tied to keyboard-driven workflows (e.g., a modal opening).
+
+## ADR-021 — Drop `hearing` profile dimension, reserve slot for motor / voice-control stretch
+Date: 2026-04-25
+The Day 1 scaffold included a `hearing: 'deaf' | 'hoh' | 'none'` field in `AccessibilityProfile`. By Day 4, nothing on the backend branched on it — `to_prompt_guidance` had no hearing-specific clause — and the UI layer only needed visible captions, which the app already provides by being text-first and fully on-screen. Deaf/HoH learners already have parity without a dedicated layer.
+
+Removed the field from `backend/app/schemas/profile.py`, `frontend/src/lib/types.ts` (+ `defaultProfile`), `frontend/src/lib/preview.ts`, and the `RadioField` in `Onboarding.tsx`. Added `ConfigDict(extra="ignore")` to `AccessibilityProfile` so existing dev-DB learner rows with `{"hearing": "deaf"}` JSON still round-trip without raising. Added `backend/tests/test_profile.py` covering defaults, extra-ignore, round-trip, and `to_prompt_guidance` flags.
+
+The slot was reallocated to a **motor / voice-control stretch** (users who cannot use a keyboard or mouse). This is explicitly a Day 7 scope item: full-page voice navigation is a different UX problem — command grammar, state machine, barge-in — that would derail Day 4–6 if undertaken now. Day 4 still adds STT push-to-talk in the composer, which is a narrower slice of the same space but doesn't claim to be motor-accessible overall.

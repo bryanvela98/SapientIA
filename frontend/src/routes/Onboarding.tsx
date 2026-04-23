@@ -151,27 +151,6 @@ export default function Onboarding() {
               />
 
               <RadioField
-                legend="Hearing"
-                description="Reserved — deeper hearing support lands in a later milestone."
-                name="hearing"
-                value={draft.hearing}
-                options={[
-                  { value: 'none', label: 'No accommodation', description: 'Default phrasing.' },
-                  {
-                    value: 'hoh',
-                    label: 'Hard of hearing',
-                    description: 'Captions and visual cues prioritized.',
-                  },
-                  {
-                    value: 'deaf',
-                    label: 'Deaf',
-                    description: 'Captions and visual cues prioritized.',
-                  },
-                ]}
-                onChange={(v) => patch('hearing', v)}
-              />
-
-              <RadioField
                 legend="Cognitive"
                 description="Plain language mode asks the tutor to use grade-5 reading level and define jargon on first use."
                 name="cognitive"

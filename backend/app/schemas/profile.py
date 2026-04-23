@@ -1,10 +1,14 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Literal
 
 
 class AccessibilityProfile(BaseModel):
+    # `extra="ignore"` keeps forward-compat: old learner rows in dev DBs may
+    # still carry a `hearing` field from before ADR-021. Pydantic should drop
+    # it silently rather than raising `extra_forbidden`.
+    model_config = ConfigDict(extra="ignore")
+
     visual: Literal["screen-reader", "low-vision", "none"] = "none"
-    hearing: Literal["deaf", "hoh", "none"] = "none"
     cognitive: Literal["plain-language", "none"] = "none"
     learning: Literal["dyslexia-font", "adhd-focus", "none"] = "none"
     pacing: Literal["slow", "normal"] = "normal"

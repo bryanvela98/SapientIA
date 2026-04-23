@@ -1,7 +1,8 @@
-// Mirrors backend/app/schemas/profile.py AccessibilityProfile
+// Mirrors backend/app/schemas/profile.py AccessibilityProfile.
+// `hearing` was dropped in ADR-021; the slot is reserved for a motor /
+// voice-control stretch in Day 7.
 export type AccessibilityProfile = {
   visual: 'screen-reader' | 'low-vision' | 'none';
-  hearing: 'deaf' | 'hoh' | 'none';
   cognitive: 'plain-language' | 'none';
   learning: 'dyslexia-font' | 'adhd-focus' | 'none';
   pacing: 'slow' | 'normal';
@@ -9,7 +10,6 @@ export type AccessibilityProfile = {
 
 export const defaultProfile: AccessibilityProfile = {
   visual: 'none',
-  hearing: 'none',
   cognitive: 'none',
   learning: 'none',
   pacing: 'normal',

@@ -1,7 +1,7 @@
 # SapientIA — Inclusive Socratic Tutor
 
 ## What this is
-A web app that teaches any topic through Socratic dialogue, adapted to four accessibility profiles (visual, hearing, cognitive, learning disabilities). Built for the Build With Opus 4.7 hackathon.
+A web app that teaches any topic through Socratic dialogue, adapted to four accessibility profiles (visual, cognitive, learning disabilities, and — stretch — motor / no-hands voice control). Built for the Build With Opus 4.7 hackathon.
 
 ## Non-negotiables
 1. **Teach, don't tell.** The tutor never outputs the final answer on turn 1. It diagnoses, asks leading questions, gives graded hints. Final answers only after the learner demonstrates understanding.
@@ -30,10 +30,12 @@ After you finish a meaningful chunk of work:
 
 ## Accessibility priority order (MVP → stretch)
 1. Visual impairment / blindness
-2. Hearing impairment
-3. Cognitive / intellectual disabilities
-4. Learning disabilities (dyslexia, ADHD)
+2. Cognitive / intellectual disabilities
+3. Learning disabilities (dyslexia, ADHD)
+4. Motor impairment / no-hands (voice control) — **stretch, last-days only**
 5. Non-disabled users
+
+Note: hearing impairment was intentionally dropped (ADR-021). Rationale: the app is text-first and fully visible on screen, so deaf/HoH learners already have parity without a dedicated layer. The slot was reallocated to motor/voice control for users who cannot use a keyboard or mouse — a harder problem that actually needs new UX.
 
 ## Pedagogy quick reference
 See `docs/pedagogy.md` and the `socratic-tutor` skill in `.claude/skills/`.
@@ -42,7 +44,7 @@ See `docs/pedagogy.md` and the `socratic-tutor` skill in `.claude/skills/`.
 - Day 1: Core Socratic loop as a script, no UI
 - Day 2: FastAPI server, streaming, persistence
 - Day 3: React shell + baseline a11y
-- Day 4: Visual impairment layer (voice I/O, screen reader)
-- Day 5: Hearing impairment layer
-- Day 6: Cognitive + LD layers
-- Day 7: Polish, demo video, deploy
+- Day 4: Visual impairment layer (TTS, STT push-to-talk, token streaming, screen-reader polish)
+- Day 5: Cognitive layer (plain-language prompt, chunked turns, progress summaries)
+- Day 6: Learning disabilities layer (dyslexia font, ADHD focus mode, pacing controls)
+- Day 7: Motor / voice-control stretch + polish, demo video, deploy
