@@ -7,10 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { AudioArmBanner } from '@/components/AudioArmBanner';
 import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
 import { SkipLink } from '@/components/SkipLink';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { TtsToggle } from '@/components/TtsToggle';
+import { useTtsForLiveTurn } from '@/hooks/useTtsForLiveTurn';
+import { useTtsKeyboard } from '@/hooks/useTtsKeyboard';
 import { useDebugOpen } from '@/lib/useDebugOpen';
+import { isTtsSupported } from '@/lib/tts';
+import { useAudioArmed, useTtsEnabled } from '@/lib/useTts';
 import {
   createSession,
   getSessionState,
@@ -197,7 +203,19 @@ function EarnedFlash() {
   );
 }
 
-function ChatSession({ sessionId, debugOpen }: { sessionId: string; debugOpen: boolean }) {
+function ChatSession({
+  sessionId,
+  debugOpen,
+  ttsEnabled,
+  ttsArmed,
+  onArmAudio,
+}: {
+  sessionId: string;
+  debugOpen: boolean;
+  ttsEnabled: boolean;
+  ttsArmed: boolean;
+  onArmAudio: () => void;
+}) {
   const turns = useApp((s) => s.turns);
   const setTurns = useApp((s) => s.setTurns);
   const startLiveTurn = useApp((s) => s.startLiveTurn);
@@ -310,6 +328,8 @@ function ChatSession({ sessionId, debugOpen }: { sessionId: string; debugOpen: b
 
   return (
     <div className="space-y-4">
+      {ttsEnabled && !ttsArmed && <AudioArmBanner onArm={onArmAudio} />}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base truncate">{state?.topic ?? 'Loading…'}</CardTitle>
@@ -401,6 +421,12 @@ export default function Chat() {
   const { sessionId } = useParams<{ sessionId?: string }>();
   const profile = useApp((s) => s.profile);
   const [debugOpen, setDebugOpen] = useDebugOpen();
+  const [ttsEnabled, setTtsEnabled] = useTtsEnabled(profile);
+  const [ttsArmed, armAudio] = useAudioArmed();
+  const ttsSupported = isTtsSupported();
+
+  useTtsForLiveTurn({ enabled: ttsEnabled && ttsSupported, armed: ttsArmed });
+  useTtsKeyboard(ttsEnabled && ttsSupported);
 
   return (
     <>
@@ -420,6 +446,9 @@ export default function Chat() {
               {sessionId && (
                 <DebugPanelToggle open={debugOpen} onOpenChange={setDebugOpen} />
               )}
+              {ttsSupported && (
+                <TtsToggle enabled={ttsEnabled} onEnabledChange={setTtsEnabled} />
+              )}
               <ThemeToggle />
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 {profileSummary(profile)}
@@ -436,7 +465,13 @@ export default function Chat() {
           </header>
 
           {sessionId ? (
-            <ChatSession sessionId={sessionId} debugOpen={debugOpen} />
+            <ChatSession
+              sessionId={sessionId}
+              debugOpen={debugOpen}
+              ttsEnabled={ttsEnabled && ttsSupported}
+              ttsArmed={ttsArmed}
+              onArmAudio={armAudio}
+            />
           ) : (
             <TopicPicker />
           )}
