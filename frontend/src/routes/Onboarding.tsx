@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
@@ -77,12 +77,11 @@ export default function Onboarding() {
   const [draft, setDraft] = useState<AccessibilityProfile>(storedProfile ?? defaultProfile);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const firstFieldRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    // Move focus to the first field on mount so keyboard users start there.
-    firstFieldRef.current?.querySelector<HTMLElement>('[role="radio"]')?.focus();
-  }, []);
+  // No focus-on-mount: we want users (especially screen-reader users) to hear
+  // the page title and the "accessibility is not a skin" description before
+  // landing mid-form. Sighted keyboard users pay one extra Tab to reach the
+  // first radio; that's a better tradeoff than stealing the preamble from VO.
 
   const sample = useMemo(() => previewSample(draft), [draft]);
 
@@ -130,28 +129,26 @@ export default function Onboarding() {
               <CardTitle className="text-base">Accessibility profile</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div ref={firstFieldRef}>
-                <RadioField
-                  legend="Visual"
-                  description="Screen-reader users get verbal descriptions and linear prose instead of diagrams."
-                  name="visual"
-                  value={draft.visual}
-                  options={[
-                    { value: 'none', label: 'No accommodation', description: 'Default phrasing.' },
-                    {
-                      value: 'screen-reader',
-                      label: 'Screen reader',
-                      description: 'Verbal image descriptions; no ASCII diagrams; linear prose.',
-                    },
-                    {
-                      value: 'low-vision',
-                      label: 'Low vision',
-                      description: 'Reserved for UI adaptations in a later milestone.',
-                    },
-                  ]}
-                  onChange={(v) => patch('visual', v)}
-                />
-              </div>
+              <RadioField
+                legend="Visual"
+                description="Screen-reader users get verbal descriptions and linear prose instead of diagrams."
+                name="visual"
+                value={draft.visual}
+                options={[
+                  { value: 'none', label: 'No accommodation', description: 'Default phrasing.' },
+                  {
+                    value: 'screen-reader',
+                    label: 'Screen reader',
+                    description: 'Verbal image descriptions; no ASCII diagrams; linear prose.',
+                  },
+                  {
+                    value: 'low-vision',
+                    label: 'Low vision',
+                    description: 'Reserved for UI adaptations in a later milestone.',
+                  },
+                ]}
+                onChange={(v) => patch('visual', v)}
+              />
 
               <RadioField
                 legend="Hearing"
