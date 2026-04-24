@@ -4,6 +4,8 @@ import type {
   ConceptEarned,
   ConceptTold,
   Learner,
+  ProgressSummary,
+  Recap,
   TextDelta,
   ToolDecision,
   TurnOut,
@@ -35,6 +37,7 @@ type UIState = {
   decisions: ToolDecision[];
   earned: ConceptEarned[];
   told: ConceptTold[];
+  recaps: Recap[];
 
   // actions
   setLearner: (l: Learner) => void;
@@ -46,6 +49,7 @@ type UIState = {
   applyDecision: (d: ToolDecision) => void;
   addEarned: (e: ConceptEarned) => void;
   addTold: (t: ConceptTold) => void;
+  addRecap: (r: ProgressSummary) => void;
   endLiveTurn: () => void;
   resetSession: () => void;
 };
@@ -60,6 +64,7 @@ export const useApp = create<UIState>((set) => ({
   decisions: [],
   earned: [],
   told: [],
+  recaps: [],
 
   setLearner: (l) => set({ learner: l, profile: l.accessibility_profile }),
 
@@ -74,6 +79,7 @@ export const useApp = create<UIState>((set) => ({
       decisions: [],
       earned: [],
       told: [],
+      recaps: [],
     }),
 
   setTurns: (t) => set({ turns: t }),
@@ -127,6 +133,23 @@ export const useApp = create<UIState>((set) => ({
 
   addTold: (t) => set((s) => ({ told: [...s.told, t] })),
 
+  // progress_summary events arrive after the live turn's text_delta stream has
+  // already populated live.text with the summary (PRIMARY_TEXT_FIELDS now
+  // includes 'summary' on the backend). We just capture the structured recap
+  // for the dedicated RecapBubble treatment that Commit 4 will add.
+  addRecap: (r) =>
+    set((s) => ({
+      recaps: [
+        ...s.recaps,
+        {
+          turn_number: s.live?.turn_number,
+          summary: r.summary,
+          concepts_recapped: r.concepts_recapped,
+          next_focus: r.next_focus,
+        },
+      ],
+    })),
+
   endLiveTurn: () => set({ live: null }),
 
   resetSession: () =>
@@ -138,5 +161,6 @@ export const useApp = create<UIState>((set) => ({
       decisions: [],
       earned: [],
       told: [],
+      recaps: [],
     }),
 }));

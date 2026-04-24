@@ -47,8 +47,21 @@ TEACHING_TOOLS = {
     "give_hint",
     "check_understanding",
     "deliver_answer",
+    # Recap is a valid terminal teaching move on its own — it consolidates
+    # earned concepts and points at what's next (see tools.py). Including it
+    # in TEACHING_TOOLS suppresses chain-through (ADR-013) so a recap-only
+    # turn doesn't trigger a second model call.
+    "progress_summary",
 }
-PRIMARY_TEXT_FIELDS = ("question", "hint", "answer")
+PRIMARY_TEXT_FIELDS = ("question", "hint", "answer", "summary")
+
+# Sentence terminators followed by whitespace or end-of-text. Mirrors the
+# heuristic in scripts/validate_loop.py and frontend/src/lib/sentence.ts.
+_SENTENCE_SPLIT_RE = re.compile(r"[.!?]+\s+|[.!?]+$|\n+")
+
+
+def _count_sentences(text: str) -> int:
+    return sum(1 for s in _SENTENCE_SPLIT_RE.split(text) if s and s.strip())
 
 
 def _extract_primary_text(partial_json: str) -> str:
@@ -85,6 +98,7 @@ async def _stream_one_attempt(
     turn_number: int,
     violations: list[str],
     state: dict,
+    profile: AccessibilityProfile,
 ) -> AsyncIterator[dict]:
     """Stream one messages.stream call. Yields SSE-ready events as they arrive.
     Populates `state["blocks"]` (list of API-shaped tool_use dicts) and
@@ -177,6 +191,25 @@ async def _stream_one_attempt(
                     }
                     if turn_number == 1:
                         violations.append("deliver_answer on turn 1")
+                elif acc["name"] == "progress_summary":
+                    yield {
+                        "type": "progress_summary",
+                        "summary": input_obj.get("summary", ""),
+                        "concepts_recapped": input_obj.get("concepts_recapped", []),
+                        "next_focus": input_obj.get("next_focus", ""),
+                    }
+
+                # Soft chunking check: when plain-language is set, the prompt
+                # caps teaching turns at ~3 short sentences. Flag over-emits
+                # as a violation without blocking — the prompt fragment does
+                # the real enforcement; this surfaces drift in telemetry.
+                if profile.cognitive == "plain-language" and acc["name"] in TEACHING_TOOLS:
+                    prose = next(
+                        (input_obj.get(k) for k in PRIMARY_TEXT_FIELDS if input_obj.get(k)),
+                        "",
+                    )
+                    if _count_sentences(prose) > 3:
+                        violations.append("max-sentences-exceeded")
 
     state["blocks"] = final_blocks
     state["teaching"] = any(
@@ -189,14 +222,20 @@ async def stream_turn(
     profile: AccessibilityProfile,
     history: list[dict],
     turn_number: int,
+    unrecapped: int = 0,
 ) -> AsyncIterator[dict]:
     """Yield SSE-ready event dicts for one tutor turn.
 
     `history` must already include the latest user turn (with any needed
     tool_result pairing — call `build_user_message` first and append).
+
+    `unrecapped` is the count of earned concepts accumulated since the last
+    `progress_summary` in this session. The server-side router tracks this
+    (Turn.tool_used='progress_summary' as a watermark) and hands it in; the
+    prompt builder appends a soft pacing nudge when it crosses the threshold.
     """
     yield {"type": "turn_start", "turn_number": turn_number}
-    system = build_system_prompt(topic, profile)
+    system = build_system_prompt(topic, profile, unrecapped=unrecapped)
     violations: list[str] = []
     current_history = history
     final_content: list[dict] | None = None
@@ -204,7 +243,7 @@ async def stream_turn(
     for _ in range(2):  # at most one chain-through
         state: dict = {"blocks": None, "teaching": False}
         async for ev in _stream_one_attempt(
-            current_history, system, turn_number, violations, state
+            current_history, system, turn_number, violations, state, profile
         ):
             yield ev
 
@@ -250,11 +289,12 @@ def extract_primary(
 ) -> tuple[str | None, str | None]:
     """Return (tool_name, display_text) for the primary teaching tool call in
     an assistant content array. Bookkeeping-only content returns (None, None).
+    `progress_summary` surfaces its `summary` field as the display text.
     """
     for b in assistant_content:
         if b.get("type") != "tool_use" or b.get("name") not in TEACHING_TOOLS:
             continue
         inp = b.get("input", {}) or {}
-        text = inp.get("question") or inp.get("hint") or inp.get("answer")
+        text = next((inp.get(k) for k in PRIMARY_TEXT_FIELDS if inp.get(k)), None)
         return b["name"], text
     return None, None

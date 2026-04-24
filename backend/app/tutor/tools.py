@@ -73,4 +73,35 @@ TOOLS = [
             "required": ["answer", "concept", "justification"],
         },
     },
+    {
+        "name": "progress_summary",
+        "description": (
+            "Recap the concepts the learner has earned in this session so far, "
+            "in 1–2 short sentences. Frame it forward-looking — anchor what they've "
+            "built, then point at what's next. Fire when unrecapped concepts have "
+            "piled up and you want to consolidate before moving on. The server may "
+            "nudge you via a '## Pacing nudge' block in the system prompt when the "
+            "learner has accumulated N earned concepts since the last recap; you "
+            "are still free to skip if the current turn calls for a different move."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "The recap prose. 1–2 short sentences, plain language. Cap ≤40 words.",
+                },
+                "concepts_recapped": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Concept names being consolidated in this recap.",
+                },
+                "next_focus": {
+                    "type": "string",
+                    "description": "One short phrase naming the concept you plan to scaffold next.",
+                },
+            },
+            "required": ["summary", "concepts_recapped", "next_focus"],
+        },
+    },
 ]

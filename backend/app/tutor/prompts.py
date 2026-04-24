@@ -11,6 +11,7 @@ On every turn, you must decide one of these actions using the tools available:
 6. deliver_answer — fire in either of these cases:
    (a) the learner has earned the prerequisites and is asking for the conclusion,
    (b) the learner has *explicitly* asked you to just tell them the answer on 3 or more turns in this session — phrases like "just tell me", "give me the answer", "please explain it directly", "I've tried, I need you to explain it". At that point further Socratic scaffolding is frustrating them and doing harm. Honor the request: deliver a concise answer and mark it "told".
+7. progress_summary — consolidate what the learner has earned so far in 1–2 short sentences and point at what's next. Fire when unrecapped concepts have piled up or when the server adds a '## Pacing nudge' block below.
 
 Track concepts as "earned" (reasoned to) vs "told" (you gave it). Earned ratio is the headline metric.
 
@@ -19,7 +20,7 @@ Track concepts as "earned" (reasoned to) vs "told" (you gave it). Earned ratio i
 
 ## Accessibility profile
 {a11y_guidance}
-
+{recap_nudge}
 ## Anti-patterns (refuse to do these)
 - Dumping the answer in turn 1
 - Saying "great question!" without substance
@@ -38,8 +39,38 @@ constraints, not as suggestions.
 Respond by calling exactly one tool. Keep prose in the tool input short and targeted."""
 
 
-def build_system_prompt(topic: str, profile: AccessibilityProfile) -> str:
+# Thresholds:
+# - `threshold`: fire the nudge once the learner has accumulated this many
+#   earned concepts since the last `progress_summary`.
+# - `max_over_threshold`: stop nudging once the model has ignored the nudge
+#   for this many additional earnings. Prevents an annoyance loop if the
+#   model repeatedly declines the recap move.
+def maybe_recap_nudge(
+    unrecapped: int,
+    threshold: int = 3,
+    max_over_threshold: int = 6,
+) -> str | None:
+    if unrecapped < threshold:
+        return None
+    if unrecapped > threshold + max_over_threshold:
+        return None
+    return (
+        "\n## Pacing nudge\n"
+        f"The learner has earned {unrecapped} concepts since the last recap. "
+        "Consider firing `progress_summary` this turn to anchor what they've "
+        "built before moving on. You are still free to pick a different tool "
+        "if this turn calls for it.\n"
+    )
+
+
+def build_system_prompt(
+    topic: str,
+    profile: AccessibilityProfile,
+    unrecapped: int = 0,
+) -> str:
+    recap = maybe_recap_nudge(unrecapped) or ""
     return SYSTEM_PROMPT_TEMPLATE.format(
         topic=topic,
         a11y_guidance=profile.to_prompt_guidance(),
+        recap_nudge=recap,
     )

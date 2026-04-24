@@ -231,6 +231,7 @@ function ChatSession({
   const applyDecision = useApp((s) => s.applyDecision);
   const addEarned = useApp((s) => s.addEarned);
   const addTold = useApp((s) => s.addTold);
+  const addRecap = useApp((s) => s.addRecap);
   const endLiveTurn = useApp((s) => s.endLiveTurn);
   const resetSession = useApp((s) => s.resetSession);
 
@@ -350,6 +351,7 @@ function ChatSession({
           else if (ev.type === 'tool_decision') applyDecision(ev);
           else if (ev.type === 'concept_earned') addEarned(ev);
           else if (ev.type === 'concept_told') addTold(ev);
+          else if (ev.type === 'progress_summary') addRecap(ev);
           else if (ev.type === 'error') setError(ev.message);
           // turn_start / turn_end are structural — no UI side-effects here.
         }
@@ -383,6 +385,7 @@ function ChatSession({
       applyDecision,
       addEarned,
       addTold,
+      addRecap,
       endLiveTurn,
       setTurns,
     ],

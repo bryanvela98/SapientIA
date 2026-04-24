@@ -45,7 +45,8 @@ export type ToolName =
   | 'give_hint'
   | 'check_understanding'
   | 'mark_concept_earned'
-  | 'deliver_answer';
+  | 'deliver_answer'
+  | 'progress_summary';
 
 export type ToolDecision = {
   type: 'tool_decision';
@@ -68,6 +69,12 @@ export type ConceptTold = {
   justification: string;
   answer?: string;
 };
+export type ProgressSummary = {
+  type: 'progress_summary';
+  summary: string;
+  concepts_recapped: string[];
+  next_focus: string;
+};
 export type TurnEnd = { type: 'turn_end'; violations: string[]; assistant_content?: unknown };
 export type TurnError = { type: 'error'; message: string };
 
@@ -77,6 +84,7 @@ export type TurnEvent =
   | ToolDecision
   | ConceptEarned
   | ConceptTold
+  | ProgressSummary
   | TurnEnd
   | TurnError;
 
@@ -86,4 +94,12 @@ export const TEACHING_TOOLS: ToolName[] = [
   'give_hint',
   'check_understanding',
   'deliver_answer',
+  'progress_summary',
 ];
+
+export type Recap = {
+  turn_number?: number;
+  summary: string;
+  concepts_recapped: string[];
+  next_focus: string;
+};

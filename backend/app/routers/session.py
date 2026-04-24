@@ -88,6 +88,17 @@ async def run_turn(session_id: str, body: TurnRequest, db: AsyncSession = Depend
     prior_assistant = next((t for t in reversed(turns) if t.role == "assistant"), None)
     next_number = (turns[-1].turn_number + 1) if turns else 1
 
+    # Count earned concepts since the last progress_summary recap turn. The
+    # watermark is the newest assistant turn with tool_used='progress_summary';
+    # before the first recap, every earned concept is unrecapped. Feeds the
+    # soft pacing nudge in build_system_prompt.
+    recap_turns = [t for t in turns if t.tool_used == "progress_summary"]
+    last_recap_at = recap_turns[-1].created_at if recap_turns else None
+    unrecapped = sum(
+        1 for c in session.earned
+        if last_recap_at is None or c.created_at > last_recap_at
+    )
+
     user_msg = build_user_message(body.message, prior_assistant)
 
     user_turn = Turn(
@@ -105,7 +116,7 @@ async def run_turn(session_id: str, body: TurnRequest, db: AsyncSession = Depend
 
     async def event_gen():
         final_assistant = None
-        async for ev in stream_turn(topic, profile, history, next_number):
+        async for ev in stream_turn(topic, profile, history, next_number, unrecapped=unrecapped):
             if ev["type"] == "concept_earned":
                 db.add(EarnedConcept(
                     session_id=session_id,
