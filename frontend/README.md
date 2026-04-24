@@ -2,6 +2,13 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Scripts
+
+- `npm run dev` — start the Vite dev server
+- `npm run build` — typecheck and build for production
+- `npm run lint` — run ESLint
+- `npm test` — run Vitest in watch mode (or `npm run test:ci` for a single pass)
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
