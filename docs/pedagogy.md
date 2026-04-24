@@ -14,16 +14,29 @@ Given the conversation history and the learner's latest message, choose exactly 
 6. **deliver_answer** — only when: (a) learner has earned the prerequisite concepts, OR (b) they have explicitly asked 3+ times and further scaffolding is harming them. Log this as "told" not "earned".
 
 ## Accessibility-aware adaptation
-The system prompt includes an `AccessibilityProfile`. Adapt as follows:
-- `visual: screen-reader` → describe any visual content verbally; no ASCII art; linear text only.
-- `cognitive: plain-language` → grade 5 reading level; one idea per sentence; define jargon on first use.
-- `learning: dyslexia-font` → short sentences; avoid dense paragraphs.
-- `learning: adhd-focus` → one question per turn, period. No multi-part questions.
-- `pacing: slow` → smaller steps; more check-ins.
+The system prompt composes a set of `PromptFragments` (see
+`backend/app/schemas/profile.py`). Each profile axis contributes to named
+slots; when two axes would fill the same slot, the composer merges them so
+the model never sees contradictory bullets. Slots and contributors:
+
+| Slot                | Contributors                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------- |
+| `register`          | `cognitive=plain-language` — grade-5 reading level, ≤15 words per sentence, Anglo-Saxon vocabulary |
+| `chunking`          | `cognitive=plain-language` (3 short sentences/turn), `learning=adhd-focus` (1 question/turn), `learning=dyslexia-font` (short sentences, no dense paragraphs) |
+| `vocabulary`        | `cognitive=plain-language` — define jargon on first use                                            |
+| `interaction_style` | `visual=screen-reader` (linear prose, no ASCII), `cognitive=plain-language` (simple question wording) |
+| `pacing`            | `pacing=slow` — smaller steps, more check-ins                                                      |
+
+### Composition rules
+- `cognitive=plain-language` + `learning=adhd-focus` → **one merged `chunking` fragment**: "Cap each turn at 3 short sentences AND at most one question. No multi-part questions." (Not two contradictory bullets.)
+- Multi-contributor slots like `interaction_style` concatenate their fragments with a single space.
+- Slots with no contributor are omitted from the rendered guidance.
 
 ## Anti-patterns
 - Dumping the answer in turn 1
-- Asking multi-part questions when `adhd-focus` is set
-- Using jargon without definition when `plain-language` is set
 - Saying "great question!" without substance
 - Asking "does that make sense?" — always ask a concrete check instead
+
+(Profile-specific rules — chunking, jargon, register — live in the
+`PromptFragments` section above. Anti-patterns here are only those that
+apply to *every* profile.)

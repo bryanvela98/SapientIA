@@ -7,6 +7,7 @@ not just the happy path.
 import sys
 import argparse
 import json
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -19,6 +20,21 @@ from app.tutor.loop import TutorState, run_turn
 from app.schemas.profile import AccessibilityProfile
 
 client = Anthropic()
+
+# Keep the map narrow on purpose — profiles are combinatorial and adding
+# every combo as a CLI string is busywork. Extend as Day 5+ commits need.
+PROFILE_PRESETS: dict[str, AccessibilityProfile] = {
+    "none": AccessibilityProfile(),
+    "cognitive-plain-language": AccessibilityProfile(cognitive="plain-language"),
+}
+
+
+_SENTENCE_SPLIT = re.compile(r"[.!?]+\s+|[.!?]+$|\n+")
+
+
+def _sentence_lengths(text: str) -> list[int]:
+    parts = [s.strip() for s in _SENTENCE_SPLIT.split(text) if s and s.strip()]
+    return [len(s.split()) for s in parts]
 
 PERSONAS = {
     "cooperative": """You are a curious, cooperative student. Reason through hints. Get things right when you can. Admit confusion honestly. Keep replies under 3 sentences.""",
@@ -63,11 +79,19 @@ def simulate_learner_reply(topic: str, persona: str, tutor_message: str, history
     return response.content[0].text
 
 
-def run_topic(topic: str, opening_learner_msg: str, persona: str, max_turns: int = 10) -> dict:
+def run_topic(
+    topic: str,
+    opening_learner_msg: str,
+    persona: str,
+    max_turns: int = 10,
+    profile: AccessibilityProfile | None = None,
+) -> dict:
+    profile = profile or AccessibilityProfile()
     print(f"\n{'='*60}\nTOPIC: {topic}   (persona: {persona})\n{'='*60}")
-    state = TutorState(topic=topic, profile=AccessibilityProfile())
+    state = TutorState(topic=topic, profile=profile)
     learner_history: list[dict] = []
     tool_decisions: list[dict] = []
+    sentence_lengths_per_turn: list[list[int]] = []
 
     learner_msg = opening_learner_msg
     print(f"\n[Learner T0]: {learner_msg}")
@@ -80,11 +104,22 @@ def run_topic(topic: str, opening_learner_msg: str, persona: str, max_turns: int
         print(f"\n[Tutor T{i+1} -> {tag}]: {tutor_text}")
         if len(result["all_tools"]) > 1:
             print(f"    (also: {result['all_tools']})")
+        lens = _sentence_lengths(tutor_text)
+        sentence_lengths_per_turn.append(lens)
+        if lens:
+            avg = sum(lens) / len(lens)
+            over = [n for n in lens if n > 20]
+            flag = f"  (avg {avg:.1f} w/sent across {len(lens)} sent"
+            if over:
+                flag += f"; {len(over)} over 20 — soft violation"
+            flag += ")"
+            print(flag)
         tool_decisions.append({
             "turn": i + 1,
             "tool": result["tool"],
             "level": level,
             "all_tools": result["all_tools"],
+            "sentence_lengths": lens,
         })
 
         if result["tool"] == "deliver_answer":
@@ -103,6 +138,11 @@ def run_topic(topic: str, opening_learner_msg: str, persona: str, max_turns: int
     hint_levels = [d["level"] for d in tool_decisions if d["tool"] == "give_hint" and d["level"] is not None]
     snap["max_hint_level"] = max(hint_levels) if hint_levels else 0
     snap["hint_levels_seen"] = hint_levels
+    all_lens = [n for turn_lens in sentence_lengths_per_turn for n in turn_lens]
+    snap["avg_words_per_sentence"] = (
+        round(sum(all_lens) / len(all_lens), 2) if all_lens else 0.0
+    )
+    snap["sentences_over_20_words"] = sum(1 for n in all_lens if n > 20)
     print(f"\n--- Summary for {topic} ({persona}) ---")
     print(json.dumps({k: v for k, v in snap.items() if k != "tool_decisions"}, indent=2))
     return snap
@@ -134,6 +174,12 @@ def main():
     parser.add_argument("--topic", type=str, default=None)
     parser.add_argument("--persona", choices=list(PERSONAS.keys()) + ["all"], default="cooperative")
     parser.add_argument("--max-turns", type=int, default=10)
+    parser.add_argument(
+        "--profile",
+        choices=list(PROFILE_PRESETS.keys()),
+        default="none",
+        help="AccessibilityProfile preset to run the tutor under.",
+    )
     args = parser.parse_args()
 
     topics = [
@@ -145,12 +191,15 @@ def main():
         topics = [(args.topic, f"Can you teach me about {args.topic}?")]
 
     personas_to_run = list(PERSONAS.keys()) if args.persona == "all" else [args.persona]
+    profile = PROFILE_PRESETS[args.profile]
+    print(f"\nPROFILE: {args.profile} -> {profile.model_dump()}")
 
     results_by_persona: dict[str, list[dict]] = {}
     for persona in personas_to_run:
         print(f"\n\n##### PERSONA: {persona} #####")
         results_by_persona[persona] = [
-            run_topic(topic, opener, persona, max_turns=args.max_turns) for topic, opener in topics
+            run_topic(topic, opener, persona, max_turns=args.max_turns, profile=profile)
+            for topic, opener in topics
         ]
 
     print("\n\n=== FINAL REPORT ===")
