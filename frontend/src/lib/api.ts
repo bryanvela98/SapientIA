@@ -81,6 +81,12 @@ export async function getSessionTurns(sessionId: string): Promise<TurnOut[]> {
   return json<TurnOut[]>(await fetch(`${API_BASE}/session/${sessionId}/turns`));
 }
 
+export type StreamTurnOptions = {
+  /** In-chat "Recap so far" control — promotes the soft pacing nudge to a
+   *  strong directive so the model fires progress_summary this turn. */
+  forceRecap?: boolean;
+};
+
 /**
  * Stream one tutor turn. Yields parsed SSE events until the server closes
  * the stream. Uses fetch + ReadableStream because EventSource is GET-only
@@ -93,11 +99,15 @@ export async function getSessionTurns(sessionId: string): Promise<TurnOut[]> {
 export async function* streamTurn(
   sessionId: string,
   message: string,
+  opts: StreamTurnOptions = {},
 ): AsyncGenerator<TurnEvent> {
   const res = await fetch(`${API_BASE}/session/${sessionId}/turn`, {
     method: 'POST',
     headers: jsonHeaders(),
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      ...(opts.forceRecap ? { force_recap: true } : {}),
+    }),
   });
   if (!res.ok || !res.body) {
     throw new Error(`turn failed: ${res.status} ${res.statusText}`);

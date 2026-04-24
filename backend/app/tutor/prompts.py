@@ -49,7 +49,16 @@ def maybe_recap_nudge(
     unrecapped: int,
     threshold: int = 3,
     max_over_threshold: int = 6,
+    force: bool = False,
 ) -> str | None:
+    if force:
+        return (
+            "\n## Pacing nudge\n"
+            "The learner has EXPLICITLY asked for a recap. Fire "
+            "`progress_summary` this turn — consolidate the concepts they've "
+            "earned so far and point at what's next. Do not ask a Socratic "
+            "question instead; the learner is asking to pause and reflect.\n"
+        )
     if unrecapped < threshold:
         return None
     if unrecapped > threshold + max_over_threshold:
@@ -67,8 +76,9 @@ def build_system_prompt(
     topic: str,
     profile: AccessibilityProfile,
     unrecapped: int = 0,
+    force_recap: bool = False,
 ) -> str:
-    recap = maybe_recap_nudge(unrecapped) or ""
+    recap = maybe_recap_nudge(unrecapped, force=force_recap) or ""
     return SYSTEM_PROMPT_TEMPLATE.format(
         topic=topic,
         a11y_guidance=profile.to_prompt_guidance(),

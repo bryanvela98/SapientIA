@@ -20,6 +20,11 @@ router = APIRouter()
 
 class TurnRequest(BaseModel):
     message: str
+    # Set by the in-chat "Recap so far" control (Day 5 Commit 5). Promotes
+    # the soft pacing nudge in the system prompt to a strong directive so
+    # the model fires progress_summary this turn regardless of the
+    # unrecapped counter.
+    force_recap: bool = False
 
 
 @router.post("", response_model=SessionOut)
@@ -116,7 +121,14 @@ async def run_turn(session_id: str, body: TurnRequest, db: AsyncSession = Depend
 
     async def event_gen():
         final_assistant = None
-        async for ev in stream_turn(topic, profile, history, next_number, unrecapped=unrecapped):
+        async for ev in stream_turn(
+            topic,
+            profile,
+            history,
+            next_number,
+            unrecapped=unrecapped,
+            force_recap=body.force_recap,
+        ):
             if ev["type"] == "concept_earned":
                 db.add(EarnedConcept(
                     session_id=session_id,

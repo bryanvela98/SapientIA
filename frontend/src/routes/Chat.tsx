@@ -12,7 +12,9 @@ import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
 import { ListeningBanner } from '@/components/ListeningBanner';
 import { LiveAnnouncer } from '@/components/LiveAnnouncer';
 import { MicButton } from '@/components/MicButton';
+import { PacingToggle } from '@/components/PacingToggle';
 import { RecapBubble } from '@/components/RecapBubble';
+import { RecapButton } from '@/components/RecapButton';
 import { SkipLink } from '@/components/SkipLink';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { TtsToggle } from '@/components/TtsToggle';
@@ -28,6 +30,7 @@ import {
   getSessionState,
   getSessionTurns,
   streamTurn,
+  updateProfile,
 } from '@/lib/api';
 import { profileSummary } from '@/lib/preview';
 import { useApp } from '@/lib/store';
@@ -230,7 +233,12 @@ function ChatSession({
   onArmAudio: () => void;
 }) {
   const turns = useApp((s) => s.turns);
+  const earned = useApp((s) => s.earned);
   const recaps = useApp((s) => s.recaps);
+  const learner = useApp((s) => s.learner);
+  const profile = useApp((s) => s.profile);
+  const setProfile = useApp((s) => s.setProfile);
+  const setLearner = useApp((s) => s.setLearner);
   const setTurns = useApp((s) => s.setTurns);
   const startLiveTurn = useApp((s) => s.startLiveTurn);
   const applyTextDelta = useApp((s) => s.applyTextDelta);
@@ -408,16 +416,103 @@ function ChatSession({
     }
   }
 
+  // Explicit "Recap so far" — sends a synthetic user message tagged as a
+  // recap request, AND sets force_recap=true on the turn so the server
+  // promotes the soft pacing nudge to a strong directive. The transcript
+  // persists the tagged user message so hydration shows intent.
+  const onRecapRequest = useCallback(async () => {
+    if (streaming) return;
+    const outgoing = '[user requested recap]';
+    setError(null);
+    setPendingUser(outgoing);
+    setStreaming(true);
+    const nextNum = (turns[turns.length - 1]?.turn_number ?? 0) + 1;
+    startLiveTurn(nextNum);
+    try {
+      for await (const ev of streamTurn(sessionId, outgoing, { forceRecap: true })) {
+        if (ev.type === 'text_delta') applyTextDelta(ev);
+        else if (ev.type === 'tool_decision') applyDecision(ev);
+        else if (ev.type === 'concept_earned') addEarned(ev);
+        else if (ev.type === 'concept_told') addTold(ev);
+        else if (ev.type === 'progress_summary') addRecap(ev);
+        else if (ev.type === 'error') setError(ev.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'turn failed');
+    } finally {
+      endLiveTurn();
+      setStreaming(false);
+      setPendingUser(null);
+      try {
+        const [fresh, freshState] = await Promise.all([
+          getSessionTurns(sessionId),
+          getSessionState(sessionId),
+        ]);
+        setTurns(fresh);
+        setState(freshState);
+      } catch {
+        // Best-effort refresh.
+      }
+      composerRef.current?.focus();
+    }
+  }, [
+    sessionId,
+    streaming,
+    turns,
+    startLiveTurn,
+    applyTextDelta,
+    applyDecision,
+    addEarned,
+    addTold,
+    addRecap,
+    endLiveTurn,
+    setTurns,
+  ]);
+
+  // Pacing toggle — optimistic flip + PATCH. Revert on failure so the
+  // UI reflects what the server actually saved. Cross-tab mirroring is
+  // deferred; a single tab is the hackathon path.
+  const onPacingToggle = useCallback(
+    (slow: boolean) => {
+      if (!learner) return;
+      const prev = profile;
+      const next = { ...profile, pacing: slow ? 'slow' : 'normal' } as typeof profile;
+      setProfile(next);
+      void (async () => {
+        try {
+          const updated = await updateProfile(learner.id, next);
+          setLearner(updated);
+        } catch (err) {
+          setProfile(prev);
+          setError(err instanceof Error ? err.message : 'pacing update failed');
+        }
+      })();
+    },
+    [learner, profile, setProfile, setLearner],
+  );
+
   return (
     <div className="space-y-4">
       {ttsEnabled && !ttsArmed && <AudioArmBanner onArm={onArmAudio} />}
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle className="text-base truncate">{state?.topic ?? 'Loading…'}</CardTitle>
-          <ConceptBadges
-            count={turns.length === 0 ? 0 : Math.max(...turns.map((t) => t.turn_number))}
-          />
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            <PacingToggle
+              slow={profile.pacing === 'slow'}
+              onSlowChange={onPacingToggle}
+              disabled={!learner}
+            />
+            <RecapButton
+              disabled={streaming}
+              onRecap={() => void onRecapRequest()}
+              earnedCount={earned.length}
+            />
+            <ConceptBadges
+              count={turns.length === 0 ? 0 : Math.max(...turns.map((t) => t.turn_number))}
+            />
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <section

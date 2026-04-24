@@ -223,6 +223,7 @@ async def stream_turn(
     history: list[dict],
     turn_number: int,
     unrecapped: int = 0,
+    force_recap: bool = False,
 ) -> AsyncIterator[dict]:
     """Yield SSE-ready event dicts for one tutor turn.
 
@@ -233,9 +234,15 @@ async def stream_turn(
     `progress_summary` in this session. The server-side router tracks this
     (Turn.tool_used='progress_summary' as a watermark) and hands it in; the
     prompt builder appends a soft pacing nudge when it crosses the threshold.
+
+    `force_recap` promotes the nudge to a strong directive when the learner
+    hit the in-chat "Recap so far" control — the prompt shifts from
+    'consider firing progress_summary' to 'the learner asked, do it now'.
     """
     yield {"type": "turn_start", "turn_number": turn_number}
-    system = build_system_prompt(topic, profile, unrecapped=unrecapped)
+    system = build_system_prompt(
+        topic, profile, unrecapped=unrecapped, force_recap=force_recap
+    )
     violations: list[str] = []
     current_history = history
     final_content: list[dict] | None = None

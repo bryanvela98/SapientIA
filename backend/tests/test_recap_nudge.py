@@ -87,6 +87,33 @@ def test_extract_primary_surfaces_summary_as_display_text():
     assert text == "You've now connected sunlight, water, and CO2."
 
 
+def test_force_recap_injects_strong_directive_regardless_of_counter():
+    """Manual 'Recap so far' control bypasses the counter-based nudge —
+    even at unrecapped=0, force_recap=True produces the strong directive."""
+    msg = maybe_recap_nudge(0, force=True)
+    assert msg is not None
+    assert "EXPLICITLY asked" in msg
+    assert "progress_summary" in msg
+
+
+def test_force_recap_wins_over_soft_nudge_wording():
+    """When both conditions fire (unrecapped above threshold AND force), the
+    strong directive wins — the soft 'consider firing' wording would
+    undermine the explicit user intent."""
+    msg = maybe_recap_nudge(5, force=True)
+    assert msg is not None
+    assert "EXPLICITLY asked" in msg
+    assert "Consider firing" not in msg
+
+
+def test_build_system_prompt_force_recap_threads_through():
+    sp = build_system_prompt(
+        "Recursion", AccessibilityProfile(), unrecapped=0, force_recap=True
+    )
+    assert "\n## Pacing nudge\n" in sp
+    assert "EXPLICITLY asked" in sp
+
+
 def test_count_sentences_matches_frontend_heuristic():
     assert _count_sentences("") == 0
     assert _count_sentences("One sentence.") == 1
