@@ -78,6 +78,10 @@ export default function Onboarding() {
   const [draft, setDraft] = useState<AccessibilityProfile>(storedProfile ?? defaultProfile);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Inline note shown under the pacing row when plain-language auto-bumps
+  // pacing to slow. Cleared whenever the user takes an explicit action on
+  // pacing, so we don't nag past their override.
+  const [autoPacingNote, setAutoPacingNote] = useState<string | null>(null);
 
   // No focus-on-mount: we want users (especially screen-reader users) to hear
   // the page title and the "accessibility is not a skin" description before
@@ -87,6 +91,21 @@ export default function Onboarding() {
   const sample = useMemo(() => previewSample(draft), [draft]);
 
   function patch<K extends keyof AccessibilityProfile>(key: K, value: AccessibilityProfile[K]) {
+    if (key === 'cognitive' && value === 'plain-language') {
+      setDraft((d) => {
+        if (d.pacing === 'normal') {
+          setAutoPacingNote('We nudged pacing to Slow to match plain-language mode. You can change it below.');
+          return { ...d, cognitive: 'plain-language', pacing: 'slow' };
+        }
+        return { ...d, cognitive: 'plain-language' };
+      });
+      return;
+    }
+    if (key === 'pacing') {
+      // Explicit user choice on pacing — clear any auto-bump note so we
+      // don't keep implying the value was set by the system.
+      setAutoPacingNote(null);
+    }
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
@@ -212,6 +231,11 @@ export default function Onboarding() {
                     <SelectItem value="slow">Slow</SelectItem>
                   </SelectContent>
                 </Select>
+                {autoPacingNote && (
+                  <p className="text-xs text-muted-foreground italic" aria-live="polite">
+                    {autoPacingNote}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

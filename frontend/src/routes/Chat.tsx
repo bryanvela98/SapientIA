@@ -12,12 +12,14 @@ import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
 import { ListeningBanner } from '@/components/ListeningBanner';
 import { LiveAnnouncer } from '@/components/LiveAnnouncer';
 import { MicButton } from '@/components/MicButton';
+import { RecapBubble } from '@/components/RecapBubble';
 import { SkipLink } from '@/components/SkipLink';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { TtsToggle } from '@/components/TtsToggle';
 import { useStt } from '@/hooks/useStt';
 import { useTtsForLiveTurn } from '@/hooks/useTtsForLiveTurn';
 import { useTtsKeyboard } from '@/hooks/useTtsKeyboard';
+import { useCognitiveMode } from '@/lib/useCognitiveMode';
 import { useDebugOpen } from '@/lib/useDebugOpen';
 import { cancel as cancelTts, isTtsSupported } from '@/lib/tts';
 import { useAudioArmed, useTtsEnabled } from '@/lib/useTts';
@@ -162,6 +164,9 @@ function AssistantBubble({
 function LiveAssistantBubble() {
   const live = useApp((s) => s.live);
   if (!live) return null;
+  if (live.tool_name === 'progress_summary') {
+    return <RecapBubble summary={live.text} streaming={live.streaming} />;
+  }
   return (
     <li className="flex justify-start">
       <div className="max-w-[80%] space-y-1">
@@ -225,6 +230,7 @@ function ChatSession({
   onArmAudio: () => void;
 }) {
   const turns = useApp((s) => s.turns);
+  const recaps = useApp((s) => s.recaps);
   const setTurns = useApp((s) => s.setTurns);
   const startLiveTurn = useApp((s) => s.startLiveTurn);
   const applyTextDelta = useApp((s) => s.applyTextDelta);
@@ -423,17 +429,34 @@ function ChatSession({
                 live-region behavior; the per-bubble role="status" handles
                 the streaming-delta announcement granularity. */}
             <ol role="log" className="space-y-3">
-              {turns.map((t) =>
-                t.role === 'user' ? (
-                  <UserBubble key={`u-${t.turn_number}`} text={t.display_text} />
-                ) : (
+              {turns.map((t) => {
+                if (t.role === 'user') {
+                  return <UserBubble key={`u-${t.turn_number}`} text={t.display_text} />;
+                }
+                if (t.tool_used === 'progress_summary') {
+                  // Structured fields (concepts, next_focus) live in the
+                  // session-scoped `recaps` store — the /turns hydration
+                  // endpoint only returns display_text. After reload the
+                  // callout still renders with just the summary text; the
+                  // tool_used branch owns the visual treatment either way.
+                  const stored = recaps.find((r) => r.turn_number === t.turn_number);
+                  return (
+                    <RecapBubble
+                      key={`a-${t.turn_number}`}
+                      summary={t.display_text}
+                      conceptsRecapped={stored?.concepts_recapped}
+                      nextFocus={stored?.next_focus}
+                    />
+                  );
+                }
+                return (
                   <AssistantBubble
                     key={`a-${t.turn_number}`}
                     text={t.display_text}
                     tool={t.tool_used}
                   />
-                ),
-              )}
+                );
+              })}
               {pendingUser && <UserBubble key="pending-user" text={pendingUser} />}
               <LiveAssistantBubble />
             </ol>
@@ -532,6 +555,7 @@ export default function Chat() {
 
   useTtsForLiveTurn({ enabled: ttsEnabled && ttsSupported, armed: ttsArmed });
   useTtsKeyboard(ttsEnabled && ttsSupported);
+  useCognitiveMode(profile);
 
   return (
     <>

@@ -73,6 +73,34 @@
   --ring: oklch(0.88 0.22 95);
 }
 
+/* Cognitive / plain-language theme — orthogonal to [data-theme]. Can
+ * compose with high-contrast: <html class="dark" data-theme="high-contrast"
+ * data-cognitive="plain-language"> yields AAA-contrast + big-type layout.
+ * Targets a stronger visual shift than the profile chip in the header: the
+ * learner should FEEL the adaptation, not just read about it.
+ * - Body type scale up to ~17px, tighter line-height to 1.7 for breathing room.
+ * - Focus rings chunkier so they survive cards with dense content (this
+ *   addresses the "small focus rings get lost in busy cards" item from
+ *   next-steps.md).
+ * - Transcript bubbles narrower (60ch) — shorter lines reduce re-finding
+ *   effort on each return sweep.
+ * - Extra vertical padding on bubbles for density relief. */
+[data-cognitive='plain-language'] body {
+  font-size: 17px;
+  line-height: 1.7;
+}
+[data-cognitive='plain-language'] *:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+[data-cognitive='plain-language'] [role='log'] > li > div,
+[data-cognitive='plain-language'] [role='log'] > li > div > div:first-child {
+  max-width: 60ch;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  line-height: 1.75;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
