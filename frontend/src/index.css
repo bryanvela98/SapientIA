@@ -146,6 +146,27 @@
   line-height: 1.75;
 }
 
+/* Dyslexia-font theme — orthogonal to [data-theme] and [data-cognitive]
+ * (ADR-027 pattern). Switches the body to Atkinson Hyperlegible and
+ * adds a touch of letter/word spacing — Atkinson's metrics already do
+ * most of the legibility work, so we don't need aggressive spacing.
+ *
+ * Stacking with cognitive: cognitive bumps body to 17px / 1.7. We do
+ * NOT add another font-size bump on top — Atkinson runs slightly
+ * smaller than system-ui and the composed experience is already
+ * comfortable at 17px. Cognitive's 17px stands; the dyslexia layer
+ * just touches typeface + spacing + a small line-height nudge. */
+[data-learning='dyslexia-font'] body {
+  font-family: var(--font-dyslexia);
+  letter-spacing: 0.02em;
+  word-spacing: 0.06em;
+}
+[data-learning='dyslexia-font'][data-cognitive='plain-language'] body {
+  /* Cognitive's 17px stays; only the line-height gets a nudge to
+   * accommodate Atkinson's slightly different metrics. */
+  line-height: 1.75;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

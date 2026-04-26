@@ -22,6 +22,7 @@ import { useStt } from '@/hooks/useStt';
 import { useTtsForLiveTurn } from '@/hooks/useTtsForLiveTurn';
 import { useTtsKeyboard } from '@/hooks/useTtsKeyboard';
 import { useCognitiveMode } from '@/lib/useCognitiveMode';
+import { useLearningMode } from '@/lib/useLearningMode';
 import { useDebugOpen } from '@/lib/useDebugOpen';
 import { cancel as cancelTts, isTtsSupported } from '@/lib/tts';
 import { useAudioArmed, useTtsEnabled } from '@/lib/useTts';
@@ -651,6 +652,7 @@ export default function Chat() {
   useTtsForLiveTurn({ enabled: ttsEnabled && ttsSupported, armed: ttsArmed });
   useTtsKeyboard(ttsEnabled && ttsSupported);
   useCognitiveMode(profile);
+  useLearningMode(profile);
 
   return (
     <>
