@@ -19,9 +19,12 @@ import { RecapButton } from '@/components/RecapButton';
 import { SkipLink } from '@/components/SkipLink';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { TtsToggle } from '@/components/TtsToggle';
+import { VoiceCommandBanner } from '@/components/VoiceCommandBanner';
+import { VoiceCommandButton } from '@/components/VoiceCommandButton';
 import { useStt } from '@/hooks/useStt';
 import { useTtsForLiveTurn } from '@/hooks/useTtsForLiveTurn';
 import { useTtsKeyboard } from '@/hooks/useTtsKeyboard';
+import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { useCognitiveMode } from '@/lib/useCognitiveMode';
 import { useLearningMode } from '@/lib/useLearningMode';
 import { useMinimizedUi } from '@/lib/useMinimizedUi';
@@ -275,6 +278,12 @@ function ChatSession({
     },
   });
 
+  // Hands-free voice command lifecycle. Commit 2 only ships the state
+  // machine + visual indicator; dispatch wiring lands in Commit 3 (the
+  // `onDispatch` callback is left undefined for now so matched commands
+  // surface in the banner without firing actions).
+  const voice = useVoiceCommands();
+
   const startDictation = useCallback(() => {
     if (!stt.supported || stt.listening) return;
     cancelTts();
@@ -321,6 +330,51 @@ function ChatSession({
       window.removeEventListener('keyup', onUp);
     };
   }, [stt.supported, startDictation, stopDictation]);
+
+  const startVoiceCommand = useCallback(() => voice.start(), [voice]);
+  const stopVoiceCommand = useCallback(() => voice.stop(), [voice]);
+
+  // Shift+V hold for voice commands — mirror of the Shift+Space STT chord
+  // but the activeElement guard is inverted: STT only fires *inside* the
+  // composer (it dictates into the textarea); voice commands only fire
+  // *outside* text inputs so capital V still types in the composer.
+  useEffect(() => {
+    if (!voice.supported) return;
+    let armed = false;
+    function onDown(e: KeyboardEvent) {
+      if (e.key !== 'V' && e.key !== 'v') return;
+      if (!e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.repeat) return;
+      const ae = document.activeElement;
+      if (ae) {
+        const tag = ae.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (ae as HTMLElement).isContentEditable) {
+          return;
+        }
+      }
+      e.preventDefault();
+      armed = true;
+      startVoiceCommand();
+    }
+    function onUp(e: KeyboardEvent) {
+      if (!armed) return;
+      if (e.key === 'V' || e.key === 'v' || e.key === 'Shift') {
+        armed = false;
+        stopVoiceCommand();
+      }
+    }
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, [voice.supported, startVoiceCommand, stopVoiceCommand]);
+
+  const toggleVoiceCommand = useCallback(() => {
+    if (voice.state === 'listening') stopVoiceCommand();
+    else startVoiceCommand();
+  }, [voice.state, startVoiceCommand, stopVoiceCommand]);
 
   // Hydrate whenever the session id changes. We don't bail out on a matching
   // storeSessionId because TopicPicker no longer pre-seeds the store — the
@@ -569,6 +623,12 @@ function ChatSession({
 
           {stt.listening && <ListeningBanner interim={stt.interim} />}
 
+          <VoiceCommandBanner
+            state={voice.state}
+            lastIntent={voice.lastIntent}
+            lastError={voice.lastError}
+          />
+
           {stt.error && (
             <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/60 bg-destructive/5 p-3">
               <p role="alert" className="text-sm text-destructive">
@@ -611,7 +671,9 @@ function ChatSession({
                 {streaming
                   ? 'Tutor is replying…'
                   : stt.supported
-                  ? 'Cmd/Ctrl + Enter to send · hold Shift+Space to dictate'
+                  ? voice.supported
+                    ? 'Cmd/Ctrl + Enter to send · hold Shift+Space to dictate · hold Shift+V for voice commands'
+                    : 'Cmd/Ctrl + Enter to send · hold Shift+Space to dictate'
                   : 'Cmd/Ctrl + Enter to send'}
               </p>
               <div className="flex items-center gap-2">
@@ -620,6 +682,13 @@ function ChatSession({
                     listening={stt.listening}
                     disabled={streaming}
                     onToggle={toggleDictation}
+                  />
+                )}
+                {voice.supported && (
+                  <VoiceCommandButton
+                    active={voice.state === 'listening'}
+                    disabled={streaming}
+                    onToggle={toggleVoiceCommand}
                   />
                 )}
                 <Button
