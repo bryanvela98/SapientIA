@@ -29,6 +29,3 @@ dist/
 
 # Claude Code local state (keep memory, ignore runtime)
 .claude/local/
-.claude/memory/sessions/
-.claude/memory/progress.md
-.claude/memory/next-steps.md
