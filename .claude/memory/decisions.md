@@ -128,3 +128,29 @@ Date: 2026-04-26
 `[data-theme='high-contrast']` and `[data-cognitive='plain-language']` compose cleanly — a learner with `cognitive=plain-language` in high-contrast should get AAA colors + big-type layout, not one or the other. Both live in `index.css` as independent attribute selectors on `<html>`, set by independent hooks (`useTheme` tri-state and `useCognitiveMode`). No CSS variable is overridden in both blocks; `data-cognitive` only touches `font-size`, `line-height`, `*:focus-visible`, and transcript-bubble geometry (max-width 60ch + vertical padding). `data-theme` only touches the palette variables.
 
 Rule going forward: accessibility layers land as orthogonal data attributes + CSS blocks. If a future axis needs to override a variable also touched by another layer (e.g. a dyslexia-font layer that needs to raise line-height further), we'll document the precedence (last-selector-wins under equal specificity) and keep the blocks colocated in `index.css` so the cascade order is auditable in one place. The `useCognitiveMode` hook cleanup removes the attribute on unmount so tests don't leak state between renders — mirroring the pattern `useTheme` uses, with the caveat that in prod the hook lives for the whole app's lifetime and cleanup matters mostly for vitest.
+
+## ADR-028 — Atkinson Hyperlegible as the dyslexia-font choice
+Date: 2026-04-27
+Three candidates were on the table: OpenDyslexic, Lexend, and Atkinson Hyperlegible. **Atkinson Hyperlegible** wins.
+
+- **OpenDyslexic** is the recognizable "dyslexia font" but it's polarizing — some dyslexic readers find it *harder* to read, the heavy bottom weight reads as cartoonish at smaller sizes, and the typeface is less actively maintained than the other two. Strong visual differentiation ("I switched it on") doesn't outweigh those drawbacks for a tool that's meant to actually help.
+- **Lexend** has real research backing on reading proficiency and ships as a variable font, but the variable-axis flow is overkill for our single-toggle UX, and the wider default glyph set adds bytes we don't need.
+- **Atkinson Hyperlegible** was designed by the Braille Institute for low-vision readers. Its glyph distinctions (mirror-image letters, similar-shaped digits) help dyslexic readers too, the metrics compose cleanly with the cognitive-mode 17px / 1.7 type scale (it runs slightly smaller than system-ui — see ADR-029), and the SIL OFL 1.1 license has straightforward redistribution terms.
+
+We self-host (one woff2 per weight/style — Regular, Bold, Italic, BoldItalic — under `frontend/public/fonts/atkinson-hyperlegible/`) instead of using Google Fonts at runtime. Self-hosting avoids the privacy footprint of a third-party CDN, keeps the fonts loadable offline, and makes the build artifact self-contained. OFL.txt ships alongside the woff2 files (license requirement). Latin-only subset; non-Latin content falls back to the next family in `--font-dyslexia`. Only Regular is preloaded in `index.html`; Bold and Italic load on demand. OpenDyslexic remains a candidate for a post-hackathon user-selectable option.
+
+## ADR-029 — Cap body font-size at 17px when cognitive + dyslexia stack
+Date: 2026-04-27
+`cognitive=plain-language` bumps body to `font-size: 17px; line-height: 1.7`. `learning=dyslexia-font` swaps `font-family` to Atkinson + adds light letter/word spacing. The open question from Day 5 next-steps was: when both axes fire, does Atkinson's metrics + cognitive's 17px push composed text into oversized territory?
+
+**Resolution: cap body at 17px regardless of layer.** Atkinson runs slightly smaller than system-ui at the same `font-size`, so the composed experience at 17px is comfortable, not oversized. The dyslexia layer therefore does NOT add another `font-size` bump on top — it only nudges `line-height` from 1.7 → 1.75 to accommodate Atkinson's slightly different vertical metrics. The CSS expresses this with a compound selector `[data-learning='dyslexia-font'][data-cognitive='plain-language'] body { line-height: 1.75; }` — the compound selector beats either single-attribute selector under cascade tie-breaking, so the rule lands last and wins.
+
+If a third layer ever wants to bump the type scale further (e.g. `learning=large-print` someday), it joins the same compound-selector chain rather than fighting either component. Document precedence inline in `index.css`; future contributors should not need to read the whole file to understand which line-height wins.
+
+## ADR-030 — Opacity-only soft-fade for ADHD-focus, never aria-hidden on transcript items
+Date: 2026-04-27
+`learning=adhd-focus` fades transcript items older than the most-recent four (`ol[role='log'] > li:nth-last-child(n+5)`) to 0.55 opacity, restoring full opacity on hover/focus-within. The fade is **purely visual** — it reduces cognitive load for sighted ADHD learners reviewing the live exchange.
+
+**Critical access rule, codified here so future contributors don't accidentally regress it:** `aria-hidden` MUST NEVER be applied to transcript items, no matter how well-meaning the change. CSS `opacity` does not hide content from screen readers; sighted ADHD users get the visual filter while blind / low-vision users still walk the full conversation log. Combining opacity with `aria-hidden` would silently strip half the transcript from SR users to make a sighted-only feature "consistent" — that's exactly the trap an a11y-conscious team has to refuse explicitly.
+
+The `:hover, :focus-within` opacity restore is also load-bearing: a sighted keyboard user who tabs into an older bubble (say, to copy text) gets full visibility back. Same principle as the ADHD-focus chord (Shift+M minimize): the layer reduces noise, never information access. If we ever want to actually omit older turns from the rendered DOM (rather than fade them), that's a different feature — it would need a "Show full history" toggle and a different commit.
