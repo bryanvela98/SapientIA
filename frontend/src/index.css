@@ -1,8 +1,53 @@
 @import 'tailwindcss';
 
+/* Atkinson Hyperlegible — self-hosted under public/fonts. Designed by the
+ * Braille Institute for low-vision; selected as the dyslexia-font face for
+ * the LD layer (Day 6 ADR-028). Latin subset only; non-Latin content
+ * cleanly falls back to the next family in --font-dyslexia.
+ * `font-display: swap` — paint the fallback first, swap when the woff2
+ * arrives. No FOIT, slight FOUT; acceptable since the fallback is
+ * system-ui (high quality everywhere we ship). */
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/atkinson-hyperlegible/AtkinsonHyperlegible-Regular.woff2')
+    format('woff2');
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/atkinson-hyperlegible/AtkinsonHyperlegible-Bold.woff2')
+    format('woff2');
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/atkinson-hyperlegible/AtkinsonHyperlegible-Italic.woff2')
+    format('woff2');
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/atkinson-hyperlegible/AtkinsonHyperlegible-BoldItalic.woff2')
+    format('woff2');
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Consumed by [data-learning='dyslexia-font'] in the LD theme block.
+   * Fallback chain: Atkinson → system-ui (high-quality default on every
+   * platform we ship to) → generic sans-serif. */
+  --font-dyslexia: 'Atkinson Hyperlegible', system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Preload only Regular: it's the face every dyslexia-font user
+         needs first, ~11 KB. Bold / Italic load on demand via @font-face.
+         Unconditional preload costs ~11 KB for users who never enable
+         dyslexia-font; acceptable for hackathon, revisit if Lighthouse
+         performance flags it. -->
+    <link
+      rel="preload"
+      as="font"
+      href="/fonts/atkinson-hyperlegible/AtkinsonHyperlegible-Regular.woff2"
+      type="font/woff2"
+      crossorigin
+    />
     <title>SapientIA</title>
   </head>
   <body>
