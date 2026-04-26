@@ -40,3 +40,20 @@ the model never sees contradictory bullets. Slots and contributors:
 (Profile-specific rules — chunking, jargon, register — live in the
 `PromptFragments` section above. Anti-patterns here are only those that
 apply to *every* profile.)
+
+## Violations surfaced by the server
+
+The async loop runs soft checks on each completed teaching tool block
+and appends violation tags to the turn's `violations` list. All checks
+log only — they do NOT block the turn or trigger a rewrite. The debug
+panel and the eval loop surface the tags so drift is visible.
+
+| Violation | Fires when | Action |
+|---|---|---|
+| `deliver_answer on turn 1` | Model fired `deliver_answer` on the first turn of a session | Log only |
+| `max-sentences-exceeded` | `cognitive=plain-language` AND a teaching tool's primary prose contains > 3 sentences | Log only |
+| `max-questions-exceeded` | `learning=adhd-focus` AND a tool in {diagnose, ask_socratic_question, give_hint, check_understanding} contains > 1 `?` in its primary prose | Log only |
+
+`progress_summary` and `deliver_answer` are excluded from the question
+count — recap prose and final-answer prose can legitimately quote
+question marks.

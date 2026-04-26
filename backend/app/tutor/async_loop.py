@@ -64,6 +64,30 @@ def _count_sentences(text: str) -> int:
     return sum(1 for s in _SENTENCE_SPLIT_RE.split(text) if s and s.strip())
 
 
+# Tools whose primary text is "the question(s) the model is asking". Excludes
+# `progress_summary` (recap prose may contain rhetorical/quoted '?') and
+# `deliver_answer` (final-answer prose may quote questions inside it). Mirror
+# of the cognitive sentence check, narrower scope: only flag drift on tools
+# whose contract is "ask a question", because that's where adhd-focus's
+# "one question per turn" rule actually applies.
+_QUESTIONING_TOOLS = frozenset(
+    {"diagnose", "ask_socratic_question", "give_hint", "check_understanding"}
+)
+
+
+def _count_questions_in_primary(input_obj: dict) -> int:
+    """Counts literal '?' in the primary teaching text. Heuristic: a multi-
+    question turn almost always has multiple '?'. False positives from quoted
+    or rhetorical question marks are rare in tutor output and the metric is
+    soft (logged not blocking), so we accept them rather than tokenize prose.
+    """
+    prose = next(
+        (input_obj.get(k) for k in PRIMARY_TEXT_FIELDS if input_obj.get(k)),
+        "",
+    )
+    return prose.count("?")
+
+
 def _extract_primary_text(partial_json: str) -> str:
     """Best-effort extraction of the current value of question/hint/answer
     from a possibly-unterminated JSON string. Returns '' if no matching
@@ -210,6 +234,18 @@ async def _stream_one_attempt(
                     )
                     if _count_sentences(prose) > 3:
                         violations.append("max-sentences-exceeded")
+
+                # Soft single-question check: when adhd-focus is set, the
+                # prompt's chunking fragment caps teaching turns at one
+                # question. Mirrors the sentence-cap pattern (logged not
+                # blocking). Excludes progress_summary + deliver_answer
+                # because their prose can legitimately quote '?' marks.
+                if (
+                    profile.learning == "adhd-focus"
+                    and acc["name"] in _QUESTIONING_TOOLS
+                    and _count_questions_in_primary(input_obj) > 1
+                ):
+                    violations.append("max-questions-exceeded")
 
     state["blocks"] = final_blocks
     state["teaching"] = any(
