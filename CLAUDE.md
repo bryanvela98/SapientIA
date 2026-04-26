@@ -40,11 +40,14 @@ Note: hearing impairment was intentionally dropped (ADR-021). Rationale: the app
 ## Pedagogy quick reference
 See `docs/pedagogy.md` and the `socratic-tutor` skill in `.claude/skills/`.
 
-## Build timeline (7 days)
-- Day 1: Core Socratic loop as a script, no UI
-- Day 2: FastAPI server, streaming, persistence
-- Day 3: React shell + baseline a11y
-- Day 4: Visual impairment layer (TTS, STT push-to-talk, token streaming, screen-reader polish)
-- Day 5: Cognitive layer (plain-language prompt, chunked turns, progress summaries)
-- Day 6: Learning disabilities layer (dyslexia font, ADHD focus mode, pacing controls)
-- Day 7: Motor / voice-control stretch + polish, demo video, deploy
+## Build timeline (7 days — actual delivered scope)
+- Day 1: Core Socratic loop as a script, no UI ✓
+- Day 2: FastAPI server, streaming, persistence ✓
+- Day 3: React shell + baseline a11y ✓
+- Day 4: Visual impairment layer (TTS, STT push-to-talk, token streaming, screen-reader polish) ✓
+- Day 5: Cognitive layer (plain-language prompt, chunked turns, progress summaries) ✓
+- Day 6: Learning disabilities layer (Atkinson font, dyslexia theme, ADHD focus mode + Shift+M minimize chord, max-questions soft violation) ✓
+- Day 7: Motor / voice-control stretch — voice command grammar + Shift+V hold + dispatch + barge-in (cancels TTS); local demo. **Deferred: cloud deploy** (demoing locally, not deployed for hackathon submission). **Deferred: VO/NVDA/Lighthouse/axe-core verification audit** (template at `.claude/memory/sessions/2026-04-27-verification-audit.md` ready for transcription when human-driven runs happen).
+
+## Voice control quick reference
+Hold **Shift+V** outside the composer to issue a voice command (Web Speech API, where supported). Vocabulary: `recap`, `send`, `slow down` / `slower`, `normal pace` / `speed up`, `read aloud`, `stop reading`, `stop` / `cancel`, `minimize` / `hide controls`, `restore` / `maximize`. Voice activation cancels in-flight TTS (barge-in). See ADR-032 (grammar rationale) and ADR-033 (minimize routes through `useMinimizedUi` single source of truth).

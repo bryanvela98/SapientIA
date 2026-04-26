@@ -154,3 +154,30 @@ Date: 2026-04-27
 **Critical access rule, codified here so future contributors don't accidentally regress it:** `aria-hidden` MUST NEVER be applied to transcript items, no matter how well-meaning the change. CSS `opacity` does not hide content from screen readers; sighted ADHD users get the visual filter while blind / low-vision users still walk the full conversation log. Combining opacity with `aria-hidden` would silently strip half the transcript from SR users to make a sighted-only feature "consistent" — that's exactly the trap an a11y-conscious team has to refuse explicitly.
 
 The `:hover, :focus-within` opacity restore is also load-bearing: a sighted keyboard user who tabs into an older bubble (say, to copy text) gets full visibility back. Same principle as the ADHD-focus chord (Shift+M minimize): the layer reduces noise, never information access. If we ever want to actually omit older turns from the rendered DOM (rather than fade them), that's a different feature — it would need a "Show full history" toggle and a different commit.
+
+## ADR-032 — Voice command grammar is fixed-keyword, not freeform
+Date: 2026-04-28
+The motor / voice-control layer (Day 7 Commit 2) ships a 9-intent grammar — `recap`, `send`, `pacing-slow`, `pacing-normal`, `tts-on`, `tts-off`, `cancel`, `minimize-on`, `minimize-off` — parsed by `lib/voice-commands.ts:parseCommand` via normalize → exact-match → length-sorted prefix-match. Each intent has 1–3 phrases (`stop` / `cancel`, `slow down` / `slower`, etc.) so the learner can pick the wording that feels natural without hitting a parser cliff.
+
+**Why fixed grammar instead of freeform NLU:**
+- **Predictable.** Learners learn the vocabulary in 30 seconds; "what can I say?" is answered by a 7-item list in the no-match banner.
+- **Testable.** `parseCommand` is a pure function with deterministic inputs and outputs. The hook lifecycle is mocked at the recognizer boundary; we don't need to test against a model or a corpus.
+- **Cheap.** No second model call to interpret transcripts. The Web Speech API gives us free transcription; a 60-line lookup turns it into actions.
+- **Safe.** The grammar can't accidentally fire a destructive action — every phrase maps to a known reversible UI state change. A freeform parser could mis-route "delete my session" to a real endpoint.
+
+**Why prefix-match, not just exact-match:** real speech recognition transcripts often have trailing fillers ("stop please", "recap quickly"). The length-sorted prefix-match table guarantees longer phrases win — `stop reading` (tts-off) beats `stop` (cancel) because it's sorted first. Exact-match runs first to avoid the prefix table firing for a phrase that's both a complete utterance AND a prefix of another (e.g. `stop` is exact-match cancel; `stop reading` is exact-match tts-off; the prefix loop only catches `stop please`).
+
+If a future session shows users hitting the no-match path repeatedly with paraphrases ("read it back to me" instead of "read aloud"), expand the phrase list — don't pivot to NLU. The post-hackathon backlog calls out freeform parsing + multi-step intents (`go back two turns`) as a Day 7+1 problem.
+
+## ADR-033 — Voice "minimize" routes through useMinimizedUi (single source of truth)
+Date: 2026-04-28
+The minimize-UI toggle has three activation paths: the `MinimizeToggle` button click, the `Shift+M` keyboard chord (handled in `useMinimizedUi` itself), and now the `minimize-on` / `minimize-off` voice commands (Day 7 Commit 3). All three MUST converge on the same setter — `useMinimizedUi`'s `update` callback — and never write to `localStorage` directly.
+
+**Why this matters:** the hook's persistence rule is non-trivial (ADR-024 explicit-only-persistence — profile sets the default; storage rules after explicit toggle; profile flips re-apply default only when no stored preference exists). If the voice path bypassed the hook and wrote `localStorage.setItem('sapientia.ui.minimized', '1')` directly, three things break:
+1. **State desync.** React doesn't observe the localStorage write; the hook's internal `minimized` state stays stale until something forces a re-read.
+2. **Persistence semantics drift.** The hook decides when to persist (only on explicit toggles); a voice path that always persists turns "voice-driven minimize" into a pinned preference even if the user wanted it ephemeral.
+3. **CSS-attribute lag.** The hook's `useEffect` is what applies/removes `data-focus-minimized` on `<html>`. Bypass the hook, the attribute never updates, the CSS hide doesn't trigger.
+
+The `useVoiceCommandDispatch` hook receives `setMinimized` (the hook's `update` fn) as a dep and calls it directly for both `minimize-on` and `minimize-off` intents. The voice path is now structurally indistinguishable from the chord and the click — same call site, same persistence, same render. If we ever add a fourth path (gesture, remote command), it joins the same convergence point.
+
+This rule is structurally identical to the React philosophy of "lift state up": the toggle's truth lives in the hook, and every actuator must dial *that* dial, not its own. It's stated as an ADR rather than a code comment because the failure mode (silent desync) is exactly the kind of regression that gets re-introduced when a future contributor "helpfully" inlines a localStorage write to "skip the boilerplate."
