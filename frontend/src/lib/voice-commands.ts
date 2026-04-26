@@ -70,6 +70,19 @@ export const COMMAND_LABELS: Record<CommandIntent['type'], string> = {
   'minimize-off': 'Restore UI',
 };
 
+// Phrase variants per intent — derived from GRAMMAR so the help dialog can't
+// drift from what the parser actually accepts. `as Record<…>` coercion is
+// safe: every entry in GRAMMAR contributes one intent type, and the type
+// system (CommandIntent) covers every variant; a missing intent here would
+// surface as a downstream type error in HelpDialog.
+export const COMMAND_PHRASES = GRAMMAR.reduce<Record<CommandIntent['type'], readonly string[]>>(
+  (acc, entry) => {
+    acc[entry.intent.type] = entry.phrases;
+    return acc;
+  },
+  {} as Record<CommandIntent['type'], readonly string[]>,
+);
+
 // Short list shown in the error banner when the recognizer captured speech we
 // couldn't parse. Keep tight — long help text reads slowly under SR.
 export const COMMAND_HELP_LIST = [

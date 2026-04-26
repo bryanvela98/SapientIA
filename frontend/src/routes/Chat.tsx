@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AudioArmBanner } from '@/components/AudioArmBanner';
 import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
+import { HelpDialog } from '@/components/HelpDialog';
 import { ListeningBanner } from '@/components/ListeningBanner';
 import { LiveAnnouncer } from '@/components/LiveAnnouncer';
 import { MicButton } from '@/components/MicButton';
@@ -31,6 +32,7 @@ import { useLearningMode } from '@/lib/useLearningMode';
 import { useMinimizedUi } from '@/lib/useMinimizedUi';
 import { useDebugOpen } from '@/lib/useDebugOpen';
 import { cancel as cancelTts, isTtsSupported } from '@/lib/tts';
+import { supportsStt } from '@/lib/stt';
 import { useAudioArmed, useTtsEnabled } from '@/lib/useTts';
 import {
   createSession,
@@ -745,6 +747,7 @@ export default function Chat() {
   const [ttsEnabled, setTtsEnabled] = useTtsEnabled(profile);
   const [ttsArmed, armAudio] = useAudioArmed();
   const ttsSupported = isTtsSupported();
+  const webSpeechSupported = supportsStt();
 
   useTtsForLiveTurn({ enabled: ttsEnabled && ttsSupported, armed: ttsArmed });
   useTtsKeyboard(ttsEnabled && ttsSupported);
@@ -780,6 +783,11 @@ export default function Chat() {
               <span data-minimize-target>
                 <ThemeToggle />
               </span>
+              <HelpDialog
+                voiceSupported={webSpeechSupported}
+                sttSupported={webSpeechSupported}
+                ttsSupported={ttsSupported}
+              />
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 {profileSummary(profile)}
               </span>
