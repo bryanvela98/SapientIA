@@ -24,6 +24,7 @@ import { VoiceCommandButton } from '@/components/VoiceCommandButton';
 import { useStt } from '@/hooks/useStt';
 import { useTtsForLiveTurn } from '@/hooks/useTtsForLiveTurn';
 import { useTtsKeyboard } from '@/hooks/useTtsKeyboard';
+import { useVoiceCommandDispatch } from '@/hooks/useVoiceCommandDispatch';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { useCognitiveMode } from '@/lib/useCognitiveMode';
 import { useLearningMode } from '@/lib/useLearningMode';
@@ -231,12 +232,16 @@ function ChatSession({
   ttsEnabled,
   ttsArmed,
   onArmAudio,
+  setTtsEnabled,
+  setMinimized,
 }: {
   sessionId: string;
   debugOpen: boolean;
   ttsEnabled: boolean;
   ttsArmed: boolean;
   onArmAudio: () => void;
+  setTtsEnabled: (v: boolean) => void;
+  setMinimized: (v: boolean) => void;
 }) {
   const turns = useApp((s) => s.turns);
   const earned = useApp((s) => s.earned);
@@ -278,11 +283,28 @@ function ChatSession({
     },
   });
 
-  // Hands-free voice command lifecycle. Commit 2 only ships the state
-  // machine + visual indicator; dispatch wiring lands in Commit 3 (the
-  // `onDispatch` callback is left undefined for now so matched commands
-  // surface in the banner without firing actions).
-  const voice = useVoiceCommands();
+  // Hands-free voice command lifecycle. The dispatch table maps each
+  // parsed intent to the matching outer-component action via
+  // useVoiceCommandDispatch. Voice activation cancels any in-flight
+  // TTS (barge-in) — same rule as STT-cancels-TTS from Day 4 Commit 5.
+  const voiceStopRef = useRef<(() => void) | null>(null);
+  const dispatchVoice = useVoiceCommandDispatch({
+    onRecap: () => onRecapRequest(),
+    onSend: () => onSend(message),
+    setPacing: (slow) => onPacingToggle(slow),
+    setTtsEnabled,
+    setMinimized,
+    cancelTts,
+    stopVoice: () => voiceStopRef.current?.(),
+    armAudio: onArmAudio,
+  });
+  const voice = useVoiceCommands({
+    onDispatch: dispatchVoice,
+    onActivate: cancelTts,
+  });
+  useEffect(() => {
+    voiceStopRef.current = voice.stop;
+  }, [voice.stop]);
 
   const startDictation = useCallback(() => {
     if (!stt.supported || stt.listening) return;
@@ -782,6 +804,8 @@ export default function Chat() {
               ttsEnabled={ttsEnabled && ttsSupported}
               ttsArmed={ttsArmed}
               onArmAudio={armAudio}
+              setTtsEnabled={setTtsEnabled}
+              setMinimized={setMinimized}
             />
           ) : (
             <TopicPicker />
