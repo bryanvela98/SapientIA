@@ -12,6 +12,7 @@ import { DebugPanel, DebugPanelToggle } from '@/components/DebugPanel';
 import { ListeningBanner } from '@/components/ListeningBanner';
 import { LiveAnnouncer } from '@/components/LiveAnnouncer';
 import { MicButton } from '@/components/MicButton';
+import { MinimizeToggle } from '@/components/MinimizeToggle';
 import { PacingToggle } from '@/components/PacingToggle';
 import { RecapBubble } from '@/components/RecapBubble';
 import { RecapButton } from '@/components/RecapButton';
@@ -23,6 +24,7 @@ import { useTtsForLiveTurn } from '@/hooks/useTtsForLiveTurn';
 import { useTtsKeyboard } from '@/hooks/useTtsKeyboard';
 import { useCognitiveMode } from '@/lib/useCognitiveMode';
 import { useLearningMode } from '@/lib/useLearningMode';
+import { useMinimizedUi } from '@/lib/useMinimizedUi';
 import { useDebugOpen } from '@/lib/useDebugOpen';
 import { cancel as cancelTts, isTtsSupported } from '@/lib/tts';
 import { useAudioArmed, useTtsEnabled } from '@/lib/useTts';
@@ -500,16 +502,20 @@ function ChatSession({
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle className="text-base truncate">{state?.topic ?? 'Loading…'}</CardTitle>
           <div className="flex items-center gap-3 flex-wrap justify-end">
-            <PacingToggle
-              slow={profile.pacing === 'slow'}
-              onSlowChange={onPacingToggle}
-              disabled={!learner}
-            />
-            <RecapButton
-              disabled={streaming}
-              onRecap={() => void onRecapRequest()}
-              earnedCount={earned.length}
-            />
+            <span data-minimize-target>
+              <PacingToggle
+                slow={profile.pacing === 'slow'}
+                onSlowChange={onPacingToggle}
+                disabled={!learner}
+              />
+            </span>
+            <span data-minimize-target>
+              <RecapButton
+                disabled={streaming}
+                onRecap={() => void onRecapRequest()}
+                earnedCount={earned.length}
+              />
+            </span>
             <ConceptBadges
               count={turns.length === 0 ? 0 : Math.max(...turns.map((t) => t.turn_number))}
             />
@@ -653,6 +659,7 @@ export default function Chat() {
   useTtsKeyboard(ttsEnabled && ttsSupported);
   useCognitiveMode(profile);
   useLearningMode(profile);
+  const [minimized, setMinimized] = useMinimizedUi(profile);
 
   return (
     <>
@@ -670,12 +677,18 @@ export default function Chat() {
             <h1 className="text-2xl font-semibold">SapientIA</h1>
             <div className="flex flex-wrap items-center gap-3">
               {sessionId && (
-                <DebugPanelToggle open={debugOpen} onOpenChange={setDebugOpen} />
+                <span data-minimize-target>
+                  <DebugPanelToggle open={debugOpen} onOpenChange={setDebugOpen} />
+                </span>
               )}
               {ttsSupported && (
-                <TtsToggle enabled={ttsEnabled} onEnabledChange={setTtsEnabled} />
+                <span data-minimize-target>
+                  <TtsToggle enabled={ttsEnabled} onEnabledChange={setTtsEnabled} />
+                </span>
               )}
-              <ThemeToggle />
+              <span data-minimize-target>
+                <ThemeToggle />
+              </span>
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 {profileSummary(profile)}
               </span>
@@ -684,9 +697,12 @@ export default function Chat() {
                   <Link to="/chat">New topic</Link>
                 </Button>
               )}
-              <Button asChild variant="outline" size="sm">
-                <Link to="/onboarding">Edit profile</Link>
-              </Button>
+              <span data-minimize-target>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/onboarding">Edit profile</Link>
+                </Button>
+              </span>
+              <MinimizeToggle minimized={minimized} onToggle={setMinimized} />
             </div>
           </header>
 

@@ -167,6 +167,35 @@
   line-height: 1.75;
 }
 
+/* ADHD-focus: soft-fade older transcript turns so the current exchange
+ * visually dominates. This is VISUAL ONLY — opacity does NOT hide
+ * content from screen readers. NEVER add aria-hidden on transcript
+ * items; sighted ADHD users get the visual filter, SR users still
+ * walk the full log. Hover and focus restore full opacity so review
+ * affordances aren't visually dead.
+ *
+ * The :nth-last-child(n+5) selector targets every <li> except the four
+ * most-recent — roughly the last user/assistant pair plus the live
+ * bubble. Tune the `n+5` if user testing shows the dominant exchange
+ * needs more or less context. */
+[data-learning='adhd-focus'] ol[role='log'] > li:nth-last-child(n+5) {
+  opacity: 0.55;
+  transition: opacity 0.3s ease;
+}
+[data-learning='adhd-focus'] ol[role='log'] > li:hover,
+[data-learning='adhd-focus'] ol[role='log'] > li:focus-within {
+  opacity: 1;
+}
+
+/* Minimize-UI: hide non-essential header controls. Applied via
+ * useMinimizedUi when the user toggles Shift+M (or hits the
+ * MinimizeToggle button). The hideable controls are wrapped in
+ * `[data-minimize-target]` containers in Chat.tsx so this CSS doesn't
+ * have to know about each shadcn component's class names. */
+[data-focus-minimized='true'] [data-minimize-target] {
+  display: none;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
